@@ -4,7 +4,7 @@ A modular, agentic code editor. Think Claude Desktop and VSCode in one window, b
 
 Tinkr ships with a minimal core. Everything else, including the editor, chat, file tree, terminal, and diff review, is a plugin. Claude can write new plugins for you while the app is running.
 
-> **Status:** Milestone 3 of 10. Open a folder, browse it, edit files in a CodeMirror editor that notices changes on disk, and run shells in a terminal panel (Ctrl+`), with a Claude chat alongside that works in that folder. Claude can't edit files yet; that, with diff review and an "Ask Claude" menu on selected code, comes next. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
+> **Status:** Milestone 4 of 10. A chat-first app: Claude works in your project folder, and every edit it makes shows up as a diff you accept or reject chunk by chunk. Shell commands ask first. Select code and press Ctrl+L (or right-click) to ask Claude about it or request changes. There's a file tree, an editor that opens beside the chat when needed, and a terminal (Ctrl+`). Next: Claude Desktop-style chat history, attachments and a model picker. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
 
 ## Features (planned)
 
@@ -57,7 +57,7 @@ Plugins can contribute panels, actions, commands, themes, and layouts. They are 
 1. ✅ Window, chat UI, sidecar streaming Claude responses
 2. ✅ File tree + CodeMirror
 3. ✅ Terminal
-4. Claude edits files with review (live diffs, accept/reject/comment), "Ask Claude" selection menu, chat-first layout
+4. ✅ Claude edits files with review (live diffs, accept/reject/comment), "Ask Claude" selection menu, chat-first layout
 5. Desktop-style chat: history, chats without a folder, attachments, model picker
 6. Docking layout + saved layouts
 7. Plugin loader, slots, hot reload

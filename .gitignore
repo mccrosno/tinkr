@@ -4,3 +4,5 @@ target/
 *.log
 bench-result.json
 tauri-dev.log
+src-tauri/binaries/
+src-tauri/gen/

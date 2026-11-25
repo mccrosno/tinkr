@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "shell-vite",
+      "name": "tinkr-vite",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "--cwd", "spikes/shell", "dev"],
+      "runtimeArgs": ["run", "dev"],
       "port": 1420
     }
   ]

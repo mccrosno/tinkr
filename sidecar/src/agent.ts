@@ -2,11 +2,21 @@
 
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
-import { query, type AccountInfo, type CanUseTool, type HookCallback, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { AuthStatus, PermissionDecision, SidecarEvent, TurnOutcome } from '../../shared/protocol'
+import { query, type AccountInfo, type CanUseTool, type HookCallback, type ModelInfo, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { Attachment, AuthStatus, EffortLevel, ModelOption, PermissionDecision, SidecarEvent, TurnOutcome } from '../../shared/protocol'
+import { messageContent, type ContentBlock } from './attachments'
 import { EDIT_TOOLS, decide, describeTool, editTarget, forThisChat, isInside, permissionDetail, readBaseline } from './tools'
 
 export type Emit = (event: SidecarEvent) => void
+
+/**
+ * The folder a chat runs in: its project, or the home folder for a chat without one.
+ * Claude Code files sessions by working folder, so using the home folder (as the CLI
+ * does when started there) means these chats and the CLI's/Desktop's home-folder
+ * sessions see each other: `claude --resume` from home lists Tinkr's chats, and
+ * Tinkr's list shows theirs.
+ */
+export const chatFolder = (project: string | undefined) => project ?? homedir()
 
 /** Options shared by every SDK call (the login check uses only these). */
 function baseOptions(cliPath: string, cwd: string = homedir()): Options {
@@ -36,8 +46,22 @@ export function toAuthStatus(info: AccountInfo): AuthStatus {
   return { state: 'unknown', detail: JSON.stringify({ tokenSource: info.tokenSource, apiProvider: info.apiProvider }) }
 }
 
-/** Ask the CLI which credential it would use, without sending a prompt. */
-export async function readAuth(cliPath: string): Promise<AuthStatus> {
+/** Claude Code's model list, in the protocol's shape. */
+export function toModelOption(m: ModelInfo): ModelOption {
+  return {
+    value: m.value,
+    resolvedModel: m.resolvedModel,
+    displayName: m.displayName,
+    description: m.description,
+    efforts: m.supportsEffort ? (m.supportedEffortLevels ?? []) : [],
+  }
+}
+
+/**
+ * Ask the CLI which credential it would use, and which models that account can pick,
+ * without sending a prompt.
+ */
+export async function readAccount(cliPath: string): Promise<{ auth: AuthStatus; models: ModelOption[] }> {
   const abortController = new AbortController()
   // Streaming-input mode with a prompt stream that never yields: the CLI starts and
   // initializes (which is when account info is known) but no message is sent.
@@ -46,9 +70,13 @@ export async function readAuth(cliPath: string): Promise<AuthStatus> {
   })()
   const q = query({ prompt: neverYields, options: { ...baseOptions(cliPath), abortController } })
   try {
-    return toAuthStatus(await q.accountInfo())
+    const auth = toAuthStatus(await q.accountInfo())
+    if (auth.state === 'signedOut') return { auth, models: [] }
+    // A failed model list shouldn't hide the login status: the picker just stays empty.
+    const models = await q.supportedModels().then((list) => list.map(toModelOption), () => [])
+    return { auth, models }
   } catch (e) {
-    return { state: 'unknown', detail: e instanceof Error ? e.message : String(e) }
+    return { auth: { state: 'unknown', detail: e instanceof Error ? e.message : String(e) }, models: [] }
   } finally {
     abortController.abort() // stop the CLI process
   }
@@ -56,6 +84,15 @@ export async function readAuth(cliPath: string): Promise<AuthStatus> {
 
 interface RunningTurn {
   abort: () => void
+}
+
+/** What a turn is sent with, besides its text. */
+export interface TurnInput {
+  /** The project folder; undefined = a chat without a folder. */
+  cwd?: string
+  model?: string
+  effort?: EffortLevel
+  attachments?: Attachment[]
 }
 
 /** A permission request waiting for the user's answer. */
@@ -77,7 +114,8 @@ export class Agent {
     private emit: Emit,
   ) {}
 
-  async send(turnId: string, resumeSessionId: string | null, text: string, cwd?: string) {
+  async send(turnId: string, resumeSessionId: string | null, text: string, input: TurnInput = {}) {
+    const { cwd, model, effort, attachments = [] } = input
     const started = Date.now()
     const finish = (outcome: TurnOutcome, extra: { sessionId?: string | null; costUsd?: number; message?: string } = {}) =>
       this.emit({
@@ -95,14 +133,34 @@ export class Agent {
     if (!cliPath) return finish('error', { message: 'Claude Code CLI is not available. Check the status bar.' })
     if (this.running.has(turnId)) return finish('error', { message: `turn ${turnId} is already running` })
 
+    let content: ContentBlock[]
+    try {
+      content = messageContent(text, attachments)
+    } catch (e) {
+      return finish('error', { message: e instanceof Error ? e.message : String(e) })
+    }
+
+    // The message goes in as a one-item stream (that's how the SDK takes content blocks
+    // such as images). The stream stays open until the turn ends: the CLI reads
+    // permission answers over the same connection, so closing it early could cut them off.
+    let endInput = () => {}
+    const inputDone = new Promise<void>((r) => (endInput = r))
+    async function* prompt(): AsyncGenerator<SDKUserMessage> {
+      yield { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null }
+      await inputDone
+    }
+
     const abortController = new AbortController()
     let aborted = false
     const q = query({
-      prompt: text,
+      prompt: prompt(),
       options: {
         ...this.turnOptions(turnId, cliPath, cwd),
         includePartialMessages: true,
         abortController,
+        // "default" is Claude Code's own default; leaving the option out means the same.
+        ...(model && model !== 'default' ? { model } : {}),
+        ...(effort ? { effort } : {}),
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
     })
@@ -158,6 +216,7 @@ export class Agent {
     } catch (e) {
       finish(aborted ? 'aborted' : 'error', { message: aborted ? undefined : e instanceof Error ? e.message : String(e) })
     } finally {
+      endInput()
       this.running.delete(turnId)
       this.cancelPermissions(turnId)
     }
@@ -232,7 +291,7 @@ export class Agent {
     }
 
     return {
-      ...baseOptions(cliPath, project),
+      ...baseOptions(cliPath, chatFolder(project)),
       tools: { type: 'preset', preset: 'claude_code' },
       // Without a project there's nowhere to review edits, so leave the edit tools out.
       disallowedTools: project ? [] : [...EDIT_TOOLS],

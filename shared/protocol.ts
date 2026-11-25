@@ -5,7 +5,7 @@
 // without parsing them (see src-tauri/src/sidecar.rs).
 
 /** Bump when a message changes shape in a way the other side must know about. */
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 // ---------------------------------------------------------------------------
 // Webview -> sidecar
@@ -17,14 +17,49 @@ export type SidecarRequest =
   /**
    * Run one agent turn. `resumeSessionId` continues an earlier conversation
    * (Claude Code stores sessions itself, per working directory); null starts a new one.
-   * `cwd` is the open project folder; omitted means the user's home folder, and then
-   * Claude gets no file-editing tools (edits are only reviewable inside a project).
+   * `cwd` is the open project folder. Omitted means a chat without a folder: it runs in
+   * the home folder (like the CLI started there), and Claude gets no file-editing tools
+   * (edits are only reviewable inside a project). `model` and `effort` omitted = Claude
+   * Code's defaults.
    */
-  | { type: 'send'; turnId: string; resumeSessionId: string | null; text: string; cwd?: string }
+  | {
+      type: 'send'
+      turnId: string
+      resumeSessionId: string | null
+      text: string
+      cwd?: string
+      model?: string
+      effort?: EffortLevel
+      attachments?: Attachment[]
+    }
   /** Stop a running turn. The turn still ends with `turnFinished` (outcome "aborted"). */
   | { type: 'abort'; turnId: string }
   /** The user's answer to a `permissionRequest`. */
   | { type: 'permissionResponse'; requestId: string; decision: PermissionDecision }
+  // Conversation history. Each of these is answered by an event with the same
+  // `requestId`: `chatList`, `chatHistory`, or `requestDone` (also used for failures).
+  // `cwd` means the same as in `send` (omitted = chats without a folder).
+  /**
+   * The chats in a folder, newest first, or with `allFolders` every chat Claude Code has
+   * stored (from the CLI, Desktop's Code tab and Tinkr alike). Answered with `chatList`.
+   */
+  | { type: 'listChats'; requestId: string; cwd?: string; allFolders?: boolean }
+  /** One chat's messages, to show it again. Answered with `chatHistory`. */
+  | { type: 'loadChat'; requestId: string; sessionId: string; cwd?: string }
+  | { type: 'renameChat'; requestId: string; sessionId: string; title: string; cwd?: string }
+  | { type: 'deleteChat'; requestId: string; sessionId: string; cwd?: string }
+
+/** How much thinking Claude does (the API's effort levels). */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/** A file sent with a message. Images and PDFs go to Claude as-is; text files as text documents. */
+export interface Attachment {
+  name: string
+  /** image/png, image/jpeg, image/gif, image/webp, application/pdf, or text/plain. */
+  mediaType: string
+  /** The file's bytes, base64-encoded. */
+  data: string
+}
 
 // ---------------------------------------------------------------------------
 // Sidecar -> webview
@@ -49,10 +84,46 @@ export type TurnOutcome = 'success' | 'aborted' | 'error'
 /** "allowForChat" also allows similar requests for the rest of this conversation. */
 export type PermissionDecision = 'allow' | 'allowForChat' | 'deny'
 
+/** A model the user can pick (from Claude Code's list, so it follows the user's plan). */
+export interface ModelOption {
+  /** Passed back as `send.model`. "default" means Claude Code's default model. */
+  value: string
+  /** The model id it resolves to, e.g. "claude-opus-5-5" (matches `turnStarted.model`). */
+  resolvedModel?: string
+  displayName: string
+  description: string
+  /** Empty if the model has no effort setting. */
+  efforts: EffortLevel[]
+}
+
+/** A past conversation, for the history list. */
+export interface ChatSummary {
+  sessionId: string
+  title: string
+  /** The folder the chat belongs to; null = no folder (the home folder). */
+  folder: string | null
+  /** Milliseconds since the epoch. */
+  lastModified: number
+}
+
+/** A file shown on a message from history. `data` (base64) is included for images only. */
+export interface AttachmentPreview {
+  name: string
+  mediaType: string
+  data?: string
+}
+
+/** One row of a past conversation, in order. */
+export type HistoryItem =
+  | { kind: 'user'; text: string; attachments: AttachmentPreview[] }
+  | { kind: 'assistant'; text: string }
+  | { kind: 'tool'; toolUseId: string; name: string; summary: string; isError: boolean }
+
 export type SidecarEvent =
   /** First line the sidecar writes. */
   | { type: 'ready'; protocol: number; sdkVersion: string; minCliVersion: string }
-  | { type: 'status'; cli: CliStatus; auth: AuthStatus }
+  /** `models` is empty until signed in (Claude Code lists them per account). */
+  | { type: 'status'; cli: CliStatus; auth: AuthStatus; models: ModelOption[] }
   | { type: 'turnStarted'; turnId: string; sessionId: string; model: string }
   | { type: 'textDelta'; turnId: string; text: string }
   /** Claude is calling a tool. `summary` is a short human label, e.g. "src/main.ts" or "npm test". */
@@ -81,6 +152,11 @@ export type SidecarEvent =
       costUsd?: number
       message?: string
     }
+  /** Answers to the history requests (see `listChats` and friends). */
+  | { type: 'chatList'; requestId: string; chats: ChatSummary[] }
+  | { type: 'chatHistory'; requestId: string; items: HistoryItem[] }
+  /** A history request finished; `error` is set if it failed. */
+  | { type: 'requestDone'; requestId: string; error?: string }
   /** A problem not tied to a turn, e.g. a malformed request. */
   | { type: 'error'; message: string }
 

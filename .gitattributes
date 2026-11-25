@@ -1,0 +1,5 @@
+# Keep LF in the repo and working tree so scripts also run in WSL/Linux.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

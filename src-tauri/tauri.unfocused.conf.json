@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      { "title": "Tinkr", "width": 1100, "height": 760, "minWidth": 480, "minHeight": 360, "focus": false }
+    ]
+  }
+}

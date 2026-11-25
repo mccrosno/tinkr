@@ -1,0 +1,48 @@
+/* Design tokens. Components use only these variables (no hard-coded colors), so a
+   theme (Milestone 7) is a set of overrides for this list. */
+:root {
+  color-scheme: dark;
+  --tk-bg: #15161a;
+  --tk-surface: #1c1d22;
+  --tk-surface-2: #24262c;
+  --tk-border: #30333b;
+  --tk-text: #e6e7eb;
+  --tk-text-muted: #8d929c;
+  --tk-accent: #d97757;
+  --tk-accent-hover: #e48a6c;
+  --tk-on-accent: #1d0f0a;
+  --tk-user-bubble: #3a2a24;
+  --tk-ok: #6cc189;
+  --tk-warn: #e0b45c;
+  --tk-danger: #ef8a7e;
+  --tk-danger-bg: #3d1f1c;
+  --tk-code-bg: #101114;
+  --tk-focus: #d9775780;
+
+  --tk-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tk-font-mono: ui-monospace, 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospace;
+  --tk-radius: 8px;
+  --tk-radius-sm: 5px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --tk-bg: #f6f5f2;
+    --tk-surface: #ffffff;
+    --tk-surface-2: #efeee9;
+    --tk-border: #dcdad3;
+    --tk-text: #1f1e1c;
+    --tk-text-muted: #6d6a63;
+    --tk-accent: #c2613f;
+    --tk-accent-hover: #ad5333;
+    --tk-on-accent: #ffffff;
+    --tk-user-bubble: #f3e3da;
+    --tk-ok: #2f8a4f;
+    --tk-warn: #a87412;
+    --tk-danger: #b3392c;
+    --tk-danger-bg: #fbe7e4;
+    --tk-code-bg: #f1f0ec;
+    --tk-focus: #c2613f66;
+  }
+}

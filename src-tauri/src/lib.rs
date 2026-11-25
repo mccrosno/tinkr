@@ -1,3 +1,4 @@
+mod config;
 mod sidecar;
 
 use tauri::RunEvent;
@@ -6,6 +7,12 @@ use tauri::RunEvent;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // File access for the webview, limited to folders opened with `open_project`
+        // (see capabilities/default.json for which fs commands are allowed). The
+        // "watch" feature lets the UI notice changes on disk.
+        .plugin(tauri_plugin_fs::init())
+        // Native "Open folder" dialog.
+        .plugin(tauri_plugin_dialog::init())
         // Register the shared state before anything can use it.
         .manage(sidecar::SidecarState::default())
         .setup(|app| {
@@ -19,7 +26,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             sidecar::sidecar_send,
             sidecar::sidecar_pid,
-            sidecar::sidecar_restart
+            sidecar::sidecar_restart,
+            config::get_config,
+            config::open_project,
+            config::close_project
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -5,7 +5,7 @@
 // without parsing them (see src-tauri/src/sidecar.rs).
 
 /** Bump when a message changes shape in a way the other side must know about. */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 // ---------------------------------------------------------------------------
 // Webview -> sidecar
@@ -17,11 +17,14 @@ export type SidecarRequest =
   /**
    * Run one agent turn. `resumeSessionId` continues an earlier conversation
    * (Claude Code stores sessions itself, per working directory); null starts a new one.
-   * `cwd` is the open project folder; omitted means the user's home folder.
+   * `cwd` is the open project folder; omitted means the user's home folder, and then
+   * Claude gets no file-editing tools (edits are only reviewable inside a project).
    */
   | { type: 'send'; turnId: string; resumeSessionId: string | null; text: string; cwd?: string }
   /** Stop a running turn. The turn still ends with `turnFinished` (outcome "aborted"). */
   | { type: 'abort'; turnId: string }
+  /** The user's answer to a `permissionRequest`. */
+  | { type: 'permissionResponse'; requestId: string; decision: PermissionDecision }
 
 // ---------------------------------------------------------------------------
 // Sidecar -> webview
@@ -43,12 +46,31 @@ export type AuthStatus =
 
 export type TurnOutcome = 'success' | 'aborted' | 'error'
 
+/** "allowForChat" also allows similar requests for the rest of this conversation. */
+export type PermissionDecision = 'allow' | 'allowForChat' | 'deny'
+
 export type SidecarEvent =
   /** First line the sidecar writes. */
   | { type: 'ready'; protocol: number; sdkVersion: string; minCliVersion: string }
   | { type: 'status'; cli: CliStatus; auth: AuthStatus }
   | { type: 'turnStarted'; turnId: string; sessionId: string; model: string }
   | { type: 'textDelta'; turnId: string; text: string }
+  /** Claude is calling a tool. `summary` is a short human label, e.g. "src/main.ts" or "npm test". */
+  | { type: 'toolUse'; turnId: string; toolUseId: string; name: string; summary: string }
+  | { type: 'toolResult'; turnId: string; toolUseId: string; isError: boolean }
+  /**
+   * A file-editing tool is about to change `path` (absolute). `before` is its current
+   * text, or null if the file doesn't exist yet. Sent before the change is applied, so
+   * the UI can keep it as the baseline for review. Files Tinkr can't diff (over 2 MB,
+   * binary) are skipped.
+   */
+  | { type: 'fileWillChange'; turnId: string; toolUseId: string; path: string; before: string | null }
+  /** The tool that announced `fileWillChange` has finished (the file may or may not have changed). */
+  | { type: 'fileChanged'; turnId: string; toolUseId: string; path: string }
+  /** Claude wants to do something that needs the user's OK. Answer with `permissionResponse`. */
+  | { type: 'permissionRequest'; turnId: string; requestId: string; toolName: string; summary: string; detail?: string }
+  /** A pending request no longer needs an answer (the turn was stopped). */
+  | { type: 'permissionCancelled'; requestId: string }
   | {
       type: 'turnFinished'
       turnId: string

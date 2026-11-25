@@ -77,7 +77,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 
 ## Milestones
 1. Window, chat UI, sidecar streaming Claude responses. **Done** (see "Milestone 1 notes" below).
-2. File tree + CodeMirror.
+2. File tree + CodeMirror. **Done** (see "Milestone 2 notes" below).
 3. Terminal.
 4. Docking layout + saved layouts.
 5. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
@@ -175,3 +175,15 @@ What shipped, and decisions made along the way:
 - **Sidecar launch:** debug builds run `bun sidecar/src/main.ts`; release builds run the compiled `tinkr-sidecar` (111 MB) placed next to the app by `externalBin` in `tauri.release.conf.json` (kept out of the base config so dev builds don't need the binary).
 - **UI:** Markdown replies via markdown-it with raw HTML disabled; links open in the system browser. A setup panel covers a missing or outdated CLI, a failed CLI, being signed out, and a stopped agent. Styling uses only the CSS variables in `src/styles/tokens.css` (dark and light).
 - **Tests:** unit tests for CLI lookup/version, auth mapping and the chat store; a live sidecar smoke test; and `e2e/chat.e2e.ts` covering status, streaming with Markdown, follow-up memory, Stop, New chat and Restart in the real window.
+
+## Milestone 2 notes
+- **Opening a project:** "Open folder" (Ctrl+O, native dialog) calls the Rust `open_project` command (`config.rs`, core module 1). It checks the folder, adds it to the fs plugin's scope (recursive), and saves it as `lastProject` + `recentProjects` in `<app config dir>/config.json`. The webview can only read and write inside opened folders. The last project reopens on launch; folders that no longer exist are dropped from the config when it's read.
+- **File access:** the webview uses `tauri-plugin-fs` (readDir, readTextFile, writeTextFile, stat, watch) behind a small `FileSystem` interface (`src/workspace/fs.ts`) so the stores are testable. Capabilities grant only those commands, plus `dialog:allow-open`/`allow-ask`. Rust's `notify` arrives through the fs plugin's `watch` feature (SPEC module 3 for now; plugin hot reload will reuse it).
+- **Tree:** folders load lazily when expanded; folders first, natural sort; `.git`, `node_modules`, `target` and similar are hidden. A recursive watcher (150 ms debounce) refreshes loaded folders.
+- **Editor:** one CodeMirror 6 view with one `EditorState` per tab (undo history, cursor and scroll are kept per file). Grammars load on demand (TS/JS/JSX, JSON, CSS, HTML/Vue, Markdown, Python, Rust, YAML). Theme and syntax colors are CSS variables. Ctrl+S saves.
+- **Changes on disk:** a clean tab reloads silently; a tab with unsaved edits shows a banner ("Use disk version" / "Keep mine") and is never overwritten. Our own saves are recognized and ignored. Files over 2 MB or containing NUL bytes open as a notice.
+- **Unsaved changes:** closing a dirty tab, switching folders or closing the folder asks first (native dialog).
+- **Chat per project:** turns run with `cwd` = the open folder (protocol: optional `cwd` on `send`). Claude Code keeps sessions per folder, so switching folders stops any running reply and starts a new chat; late events from the old turn are dropped. Claude still has no file tools (Milestone 6).
+- **Layout:** fixed three columns (tree | editor | chat) with keyboard-accessible splitters; widths are remembered in localStorage. Real docking is Milestone 4.
+- **Tests:** unit tests for path/tree helpers, language detection, the workspace store (lazy load, watcher, restore) and the editor store (dirty/save/reload/conflict/binary/close), using an in-memory fake fs. `e2e/editor.e2e.ts` drives the real window: tree, highlighting, typing + Ctrl+S to disk, external reload, conflict banner, new files appearing, and the chat's working directory.
+- **Windows note:** freshly created files can stay locked by Search/Defender for minutes, so e2e cleanup of its temp folder is best-effort.

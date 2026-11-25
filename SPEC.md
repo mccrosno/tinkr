@@ -76,7 +76,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 - Test blur and background effects on all three webviews (WebKitGTK, WebView2, WKWebView); they differ.
 
 ## Milestones
-1. Window, chat UI, sidecar streaming Claude responses.
+1. Window, chat UI, sidecar streaming Claude responses. **Done** (see "Milestone 1 notes" below).
 2. File tree + CodeMirror.
 3. Terminal.
 4. Docking layout + saved layouts.
@@ -123,7 +123,7 @@ Code in `spikes/sidecar/` (Windows x64, Bun 1.4.5, `@anthropic-ai/claude-agent-s
 - `src-tauri/src/sidecar.rs` is the sidecar manager: spawns `bun spikes/sidecar/slim.ts` with `CREATE_NO_WINDOW`, relays stdout lines as `sidecar://line` events (unparsed), stderr as `sidecar://log`, emits `sidecar://exit` with the pid, and exposes `sidecar_send` / `sidecar_restart` commands. It kills the sidecar on app exit. Plain `std::process`; no shell plugin needed.
 - The frontend parses the protocol (`src/agent.ts`), so Rust never knows the message types.
 
-**Shipping the CLI: decision (recommended, pending author sign-off).**
+**Shipping the CLI: decided (author approved 2026-11-24). Implemented in Milestone 1.**
 - Use the user's installed Claude Code CLI. Tinkr needs its login anyway, so the user already has it. Look for `claude` on PATH, then the installer's default location (`%USERPROFILE%\.local\bin`, `~/.local/bin`).
 - Check `claude --version`. The SDK expects a CLI at least as new as the one it bundles (when you pass your own CLI path, it recommends updating it to "at least the bundled version" and setting `mcpServersDelivery: 'initialize'`). If it's older, show "update Claude Code" with the command, instead of failing in confusing ways.
 - If no CLI is found, Tinkr can't work anyway (no login), so the onboarding screen explains how to install and sign in. No bundled CLI in v1.
@@ -163,3 +163,15 @@ Benchmark: `spikes/shell/src/bench.ts`, run inside the page so every webview run
 Earlier, before signing in:
 - With no login, `query().accountInfo()` returns `{ tokenSource: "none", apiProvider: "firstParty" }`, the init message has `apiKeySource: "none"`, and a prompt fails with `Not logged in · Please run /login`. That's enough to drive Tinkr's "which auth is active" indicator and a "sign in with Claude Code" hint.
 - The Claude desktop app's sign-in is not shared with the CLI/SDK.
+
+## Milestone 1 notes
+What shipped, and decisions made along the way:
+- **Layout:** Tauri app at the repo root (`src/`, `src-tauri/`), the sidecar as a Bun workspace (`sidecar/`), and `shared/protocol.ts` as the single definition of the JSON-lines protocol (`PROTOCOL_VERSION` 1).
+- **Conversations:** each message is one SDK `query()`; follow-ups pass `resume: <sessionId>`, so Claude Code stores the history (nothing stored by Tinkr). Sessions are keyed by working directory, so all chats use the home folder until projects exist.
+- **Chat only:** `tools: []` and `settingSources: []` (no file access, no user CLAUDE.md/settings) until the review model (Milestone 6) can show and approve changes. Permission requests are not yet part of `AgentProvider`.
+- **Abort:** `interrupt()` first, then kill via `AbortController` after 3 s. The turn always ends with `turnFinished` (outcome `aborted`).
+- **CLI:** found via `TINKR_CLAUDE_PATH`, PATH, then `~/.local/bin`. Minimum version = the SDK's bundled `claudeCodeVersion`, copied into `sidecar/src/sdkVersion.generated.ts` (a test fails if it goes stale). Uses `mcpServersDelivery: 'initialize'` as the SDK recommends for custom CLI paths.
+- **Auth status:** read with a prompt stream that never yields, so checking login sends no message.
+- **Sidecar launch:** debug builds run `bun sidecar/src/main.ts`; release builds run the compiled `tinkr-sidecar` (111 MB) placed next to the app by `externalBin` in `tauri.release.conf.json` (kept out of the base config so dev builds don't need the binary).
+- **UI:** Markdown replies via markdown-it with raw HTML disabled; links open in the system browser. A setup panel covers a missing or outdated CLI, a failed CLI, being signed out, and a stopped agent. Styling uses only the CSS variables in `src/styles/tokens.css` (dark and light).
+- **Tests:** unit tests for CLI lookup/version, auth mapping and the chat store; a live sidecar smoke test; and `e2e/chat.e2e.ts` covering status, streaming with Markdown, follow-up memory, Stop, New chat and Restart in the real window.

@@ -10,7 +10,7 @@ Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude
 
 ## Current status
 
-Spikes in progress (see "Spike findings" in `SPEC.md`). All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`): auth, dockview-vue, the Bun sidecar under Tauri, and themes/blur on WebView2 and WebKitGTK (via WSL2). Spike code in `spikes/` is throwaway. Pending the author's sign-off: the CLI-shipping decision (use the user's installed `claude`). Next: Milestone 1.
+Spikes in progress (see "Spike findings" in `SPEC.md`). Milestone 1 (window, chat UI, sidecar streaming) is done. Next: Milestone 2 (file tree + CodeMirror). All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
 
 WSL2: Ubuntu 24.04 is set up with Rust, Bun and the Tauri Linux prerequisites (run as root for now). Build Linux copies in the WSL home folder, not on `/mnt/c`.
 
@@ -62,4 +62,25 @@ Webview (Vue core + plugins) <-- Tauri IPC/events --> Rust core <-- stdio JSON l
 
 ## Commands
 
-None yet. Add the dev, build, test, and lint commands here once the project is scaffolded (Milestone 1).
+Run from the repo root:
+
+| Command | What |
+|---|---|
+| `bun install` | Install all workspaces (root UI + `sidecar/`) |
+| `bun run app` | `tauri dev`: UI with hot reload; debug builds run the sidecar from source with `bun` |
+| `bun test` | Unit tests (`test/`, `sidecar/test/`) |
+| `bun run typecheck` | `vue-tsc` for the UI, `tsc` for the sidecar |
+| `bun run e2e` | Drive the running app over CDP (see the header of `e2e/chat.e2e.ts` for how to launch it) |
+| `bun sidecar/scripts/smoke.ts [exe]` | Live stdio test of the sidecar (source, or a compiled exe) |
+| `bun run build:sidecar` | Compile the sidecar to `src-tauri/binaries/` |
+| `bun run release` | Compile the sidecar and build installers (adds `externalBin` via `tauri.release.conf.json`) |
+| `bun run --cwd sidecar gen` | Regenerate `sdkVersion.generated.ts` after upgrading the Agent SDK (a test fails until you do) |
+
+`e2e` and `smoke` use the real Claude Code login and cost a few cents. For Rust: `cargo build` / `cargo clippy` in `src-tauri/`.
+
+## Layout
+
+- `shared/protocol.ts`: the only definition of sidecar messages. Change both sides together and bump `PROTOCOL_VERSION` on breaking changes.
+- `sidecar/src/`: `main.ts` (stdio loop), `agent.ts` (SDK turns, auth), `cli.ts` (find `claude`, version check).
+- `src/agent/`: `types.ts` (`AgentProvider`), `claudeSidecar.ts` (Tauri events ↔ protocol). UI code uses only the provider via the `chat` store.
+- `src-tauri/src/sidecar.rs`: spawn/relay/restart. Rust never parses protocol lines.

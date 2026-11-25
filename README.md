@@ -4,7 +4,7 @@ A modular, agentic code editor. Think Claude Desktop and VSCode in one window, b
 
 Tinkr ships with a minimal core. Everything else, including the editor, chat, file tree, terminal, and diff review, is a plugin. Claude can write new plugins for you while the app is running.
 
-> **Status:** early design. No code yet. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
+> **Status:** Milestone 1 of 9. Tinkr is a desktop chat with Claude that streams replies, continues conversations, and can be stopped mid-reply. Editing, terminal, docking and plugins come next. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
 
 ## Features (planned)
 
@@ -54,7 +54,7 @@ Plugins can contribute panels, actions, commands, themes, and layouts. They are 
 
 ## Roadmap
 
-1. Window, chat UI, sidecar streaming Claude responses
+1. ✅ Window, chat UI, sidecar streaming Claude responses
 2. File tree + CodeMirror
 3. Terminal
 4. Docking layout + saved layouts
@@ -66,7 +66,31 @@ Plugins can contribute panels, actions, commands, themes, and layouts. They are 
 
 ## Development
 
-Not set up yet. Build instructions will land with Milestone 1. You'll need [Rust](https://rustup.rs), [Bun](https://bun.sh), the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS, and Claude Code signed in (or `ANTHROPIC_API_KEY` set).
+You'll need:
+
+- [Rust](https://rustup.rs), [Bun](https://bun.sh), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in (`claude`, then `/login`), or `ANTHROPIC_API_KEY` set. Tinkr reuses that installation and login; it has no login of its own.
+
+```bash
+bun install
+bun run app        # start Tinkr in dev mode (hot reload for the UI)
+bun test           # unit tests (sidecar + UI store)
+bun run typecheck
+bun run release    # compile the sidecar and build installers
+```
+
+Layout:
+
+| Path | What |
+|---|---|
+| `src/` | Vue UI: `agent/` (the `AgentProvider` interface and the Claude implementation), `stores/`, `components/` |
+| `src-tauri/` | Rust core: window and the sidecar manager |
+| `sidecar/` | Bun process that drives the Claude Agent SDK |
+| `shared/protocol.ts` | The JSON-lines messages between UI and sidecar |
+| `e2e/` | End-to-end checks that drive the real window over the DevTools protocol |
+| `spikes/` | Throwaway experiments behind the design decisions in SPEC.md |
+
+On Windows, turn off Smart App Control to build. It blocks the DLLs Rust compiles for itself (see SPEC.md).
 
 ## License
 

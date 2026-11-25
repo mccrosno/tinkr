@@ -8,6 +8,7 @@ const chat = useChat()
 const draft = ref('')
 const scroller = ref<HTMLElement>()
 const input = ref<HTMLTextAreaElement>()
+const root = ref<HTMLElement>()
 
 async function submit() {
   if (await chat.send(draft.value)) draft.value = ''
@@ -34,8 +35,17 @@ watch(
   },
 )
 
-// Put the cursor back in the box when a turn ends.
-watch(() => chat.busy, (busy) => !busy && input.value?.focus())
+// Put the cursor back in the box when a turn ends, but only if the user is still in
+// the chat (or nowhere). If they moved to the editor or a terminal meanwhile, taking
+// the focus would send their next keystrokes to the wrong place.
+watch(
+  () => chat.busy,
+  (busy) => {
+    const focused = document.activeElement
+    const inChat = !focused || focused === document.body || root.value?.contains(focused)
+    if (!busy && inChat) input.value?.focus()
+  },
+)
 
 const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
   [
@@ -48,7 +58,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
 </script>
 
 <template>
-  <div class="chat">
+  <div ref="root" class="chat">
     <div ref="scroller" class="scroller">
       <div class="column">
         <SetupNotice />

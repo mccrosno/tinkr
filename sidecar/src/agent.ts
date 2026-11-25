@@ -11,12 +11,12 @@ export type Emit = (event: SidecarEvent) => void
  * Milestone 1 is chat only: no tools, so Claude can't touch files or run commands yet
  * (that arrives with the review model in Milestone 6).
  */
-function baseOptions(cliPath: string): Options {
+function baseOptions(cliPath: string, cwd: string = homedir()): Options {
   return {
     pathToClaudeCodeExecutable: cliPath,
-    // Claude Code stores sessions per working directory, so resume needs a stable cwd.
-    // Until Tinkr has projects, every chat lives in the home folder.
-    cwd: homedir(),
+    // Claude Code stores sessions per working directory, so resume needs the same cwd:
+    // the open project folder, or the home folder when none is open.
+    cwd,
     tools: [],
     // Don't load the user's or a project's Claude Code settings/CLAUDE.md into Tinkr chats.
     settingSources: [],
@@ -65,7 +65,7 @@ export class Agent {
     private emit: Emit,
   ) {}
 
-  async send(turnId: string, resumeSessionId: string | null, text: string) {
+  async send(turnId: string, resumeSessionId: string | null, text: string, cwd?: string) {
     const started = Date.now()
     const finish = (outcome: TurnOutcome, extra: { sessionId?: string | null; costUsd?: number; message?: string } = {}) =>
       this.emit({
@@ -88,7 +88,7 @@ export class Agent {
     const q = query({
       prompt: text,
       options: {
-        ...baseOptions(cliPath),
+        ...baseOptions(cliPath, cwd),
         includePartialMessages: true,
         abortController,
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),

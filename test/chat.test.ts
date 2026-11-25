@@ -8,7 +8,7 @@ import { useChat } from '../src/stores/chat'
 class FakeProvider implements AgentProvider {
   id = 'fake'
   label = 'Fake'
-  sent: { sessionId: string | null; text: string; turnId: string }[] = []
+  sent: { sessionId: string | null; text: string; turnId: string; cwd?: string }[] = []
   aborted: string[] = []
   private listener: (e: AgentEvent) => void = () => {}
   private n = 0
@@ -24,9 +24,9 @@ class FakeProvider implements AgentProvider {
     this.emit({ type: 'status', cli: { state: 'ok', path: '/claude', version: '2.1.331' }, auth: { state: 'subscription', plan: 'Claude Pro' } })
   }
   async refreshStatus() {}
-  async send(sessionId: string | null, text: string) {
+  async send(sessionId: string | null, text: string, options: { cwd?: string } = {}) {
     const turnId = `turn${++this.n}`
-    this.sent.push({ sessionId, text, turnId })
+    this.sent.push({ sessionId, text, turnId, cwd: options.cwd })
     return turnId
   }
   async abort(turnId: string) {
@@ -95,6 +95,28 @@ describe('chat store', () => {
     await chat.send('a')
     fake.emit({ type: 'turnFinished', turnId: 'turn1', sessionId: 's1', outcome: 'success', durationMs: 1 })
     chat.newChat()
+    expect(chat.messages).toHaveLength(0)
+    expect(chat.sessionId).toBeNull()
+  })
+
+  test('turns run in the open project folder', async () => {
+    await chat.setProject('/proj')
+    await chat.send('hi')
+    expect(fake.sent[0].cwd).toBe('/proj')
+  })
+
+  test('switching folders stops the running reply and starts a fresh chat', async () => {
+    await chat.setProject('/a')
+    await chat.send('long')
+    fake.emit({ type: 'turnStarted', turnId: 'turn1', sessionId: 's1', model: 'm' })
+    await chat.setProject('/b')
+    expect(fake.aborted).toEqual(['turn1'])
+    expect(chat.messages).toHaveLength(0)
+    expect(chat.sessionId).toBeNull()
+    expect(chat.busy).toBe(false)
+    // Late events from the old folder's turn don't leak into the new chat.
+    fake.emit({ type: 'text', turnId: 'turn1', text: 'late' })
+    fake.emit({ type: 'turnFinished', turnId: 'turn1', sessionId: 's1', outcome: 'aborted', durationMs: 5 })
     expect(chat.messages).toHaveLength(0)
     expect(chat.sessionId).toBeNull()
   })

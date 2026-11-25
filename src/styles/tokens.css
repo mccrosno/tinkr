@@ -18,6 +18,17 @@
   --tk-danger-bg: #3d1f1c;
   --tk-code-bg: #101114;
   --tk-focus: #d9775780;
+  --tk-selection: #d9775733;
+  --tk-gutter-text: #5d626c;
+  --tk-active-line: #ffffff08;
+  --tk-syntax-keyword: #e08f6f;
+  --tk-syntax-string: #a7c98a;
+  --tk-syntax-number: #d8b26a;
+  --tk-syntax-comment: #6f7581;
+  --tk-syntax-function: #7fb4e0;
+  --tk-syntax-type: #c79be3;
+  --tk-syntax-property: #9fc6d6;
+  --tk-syntax-heading: #f0c98a;
 
   --tk-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --tk-font-mono: ui-monospace, 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospace;
@@ -44,5 +55,16 @@
     --tk-danger-bg: #fbe7e4;
     --tk-code-bg: #f1f0ec;
     --tk-focus: #c2613f66;
+    --tk-selection: #c2613f2e;
+    --tk-gutter-text: #a3a09a;
+    --tk-active-line: #00000008;
+    --tk-syntax-keyword: #b04a26;
+    --tk-syntax-string: #3f7a2a;
+    --tk-syntax-number: #9a6a00;
+    --tk-syntax-comment: #8a877f;
+    --tk-syntax-function: #1f62a8;
+    --tk-syntax-type: #7b3fb0;
+    --tk-syntax-property: #1d6f80;
+    --tk-syntax-heading: #9a5a00;
   }
 }

@@ -16,9 +16,10 @@ export type SidecarRequest =
   | { type: 'status' }
   /**
    * Run one agent turn. `resumeSessionId` continues an earlier conversation
-   * (Claude Code stores sessions itself); null starts a new one.
+   * (Claude Code stores sessions itself, per working directory); null starts a new one.
+   * `cwd` is the open project folder; omitted means the user's home folder.
    */
-  | { type: 'send'; turnId: string; resumeSessionId: string | null; text: string }
+  | { type: 'send'; turnId: string; resumeSessionId: string | null; text: string; cwd?: string }
   /** Stop a running turn. The turn still ends with `turnFinished` (outcome "aborted"). */
   | { type: 'abort'; turnId: string }
 

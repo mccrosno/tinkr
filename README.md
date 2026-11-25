@@ -4,7 +4,7 @@ A modular, agentic code editor. Think Claude Desktop and VSCode in one window, b
 
 Tinkr ships with a minimal core. Everything else, including the editor, chat, file tree, terminal, and diff review, is a plugin. Claude can write new plugins for you while the app is running.
 
-> **Status:** Milestone 1 of 9. Tinkr is a desktop chat with Claude that streams replies, continues conversations, and can be stopped mid-reply. Editing, terminal, docking and plugins come next. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
+> **Status:** Milestone 2 of 9. Open a folder, browse it, and edit files in a CodeMirror editor that notices changes on disk, with a Claude chat alongside that works in that folder. Claude can't edit files yet. Terminal, docking and plugins come next. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
 
 ## Features (planned)
 
@@ -55,7 +55,7 @@ Plugins can contribute panels, actions, commands, themes, and layouts. They are 
 ## Roadmap
 
 1. ✅ Window, chat UI, sidecar streaming Claude responses
-2. File tree + CodeMirror
+2. ✅ File tree + CodeMirror
 3. Terminal
 4. Docking layout + saved layouts
 5. Plugin loader, slots, hot reload
@@ -83,8 +83,8 @@ Layout:
 
 | Path | What |
 |---|---|
-| `src/` | Vue UI: `agent/` (the `AgentProvider` interface and the Claude implementation), `stores/`, `components/` |
-| `src-tauri/` | Rust core: window and the sidecar manager |
+| `src/` | Vue UI: `agent/` (the `AgentProvider` interface and the Claude implementation), `stores/` (chat, workspace, editor), `editor/` (CodeMirror languages and theme), `workspace/` (file access), `components/` |
+| `src-tauri/` | Rust core: window/config (open project, recent folders) and the sidecar manager |
 | `sidecar/` | Bun process that drives the Claude Agent SDK |
 | `shared/protocol.ts` | The JSON-lines messages between UI and sidecar |
 | `e2e/` | End-to-end checks that drive the real window over the DevTools protocol |

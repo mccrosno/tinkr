@@ -54,7 +54,10 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
         <SetupNotice />
         <div v-if="!chat.messages.length && !chat.blocker" class="empty">
           <h1>What are we building?</h1>
-          <p>Chat with Claude. File editing, the terminal and diff review arrive in later milestones.</p>
+          <p>
+            Chat with Claude. It can't read or change your files yet, and it doesn't know how Tinkr works;
+            file tools arrive with diff review, and Tinkr-aware plugin authoring after that.
+          </p>
         </div>
         <article v-for="m in chat.messages" :key="m.id" :class="['msg', m.role]" :data-outcome="m.done?.outcome">
           <div v-if="m.role === 'user'" class="bubble">{{ m.text }}</div>

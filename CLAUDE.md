@@ -10,7 +10,7 @@ Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude
 
 ## Current status
 
-Spikes in progress (see "Spike findings" in `SPEC.md`). Milestone 1 (window, chat UI, sidecar streaming) is done. Next: Milestone 2 (file tree + CodeMirror). All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
+Spikes in progress (see "Spike findings" in `SPEC.md`). Milestones 1 (chat) and 2 (file tree + CodeMirror editor) are done. Next: Milestone 3 (terminal). All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
 
 WSL2: Ubuntu 24.04 is set up with Rust, Bun and the Tauri Linux prerequisites (run as root for now). Build Linux copies in the WSL home folder, not on `/mnt/c`.
 
@@ -70,7 +70,8 @@ Run from the repo root:
 | `bun run app` | `tauri dev`: UI with hot reload; debug builds run the sidecar from source with `bun` |
 | `bun test` | Unit tests (`test/`, `sidecar/test/`) |
 | `bun run typecheck` | `vue-tsc` for the UI, `tsc` for the sidecar |
-| `bun run e2e` | Drive the running app over CDP (see the header of `e2e/chat.e2e.ts` for how to launch it) |
+| `bun run e2e` | Chat checks in the running app over CDP (see the header of `e2e/chat.e2e.ts` for how to launch it) |
+| `bun e2e/editor.e2e.ts` | File tree/editor checks in the running app (makes and removes a temp project) |
 | `bun sidecar/scripts/smoke.ts [exe]` | Live stdio test of the sidecar (source, or a compiled exe) |
 | `bun run build:sidecar` | Compile the sidecar to `src-tauri/binaries/` |
 | `bun run release` | Compile the sidecar and build installers (adds `externalBin` via `tauri.release.conf.json`) |
@@ -84,3 +85,6 @@ Run from the repo root:
 - `sidecar/src/`: `main.ts` (stdio loop), `agent.ts` (SDK turns, auth), `cli.ts` (find `claude`, version check).
 - `src/agent/`: `types.ts` (`AgentProvider`), `claudeSidecar.ts` (Tauri events ↔ protocol). UI code uses only the provider via the `chat` store.
 - `src-tauri/src/sidecar.rs`: spawn/relay/restart. Rust never parses protocol lines.
+- `src-tauri/src/config.rs`: `config.json` (last/recent projects) and `open_project`, which adds the folder to the fs plugin scope. The webview can only touch opened folders; grant new fs commands in `capabilities/default.json` deliberately.
+- `src/workspace/fs.ts`: the `FileSystem` interface the stores use (Tauri fs plugin in the app, `test/fakeFs.ts` in tests). `src/stores/workspace.ts` = tree + watcher, `src/stores/editor.ts` = tabs/dirty/save/disk changes, `src/components/EditorPane.vue` = one CodeMirror view with a state per tab.
+- Dev-only window hooks for e2e: `window.__tinkr.pinia`, `window.__tinkrOpenFolder(path)`.

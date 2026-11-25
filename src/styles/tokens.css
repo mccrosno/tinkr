@@ -29,6 +29,23 @@
   --tk-syntax-type: #c79be3;
   --tk-syntax-property: #9fc6d6;
   --tk-syntax-heading: #f0c98a;
+  /* Terminal: the 16 ANSI colors (programs pick these by number). */
+  --tk-term-black: #2a2c33;
+  --tk-term-red: #ef8a7e;
+  --tk-term-green: #8fc07a;
+  --tk-term-yellow: #e0b45c;
+  --tk-term-blue: #7fb4e0;
+  --tk-term-magenta: #c79be3;
+  --tk-term-cyan: #79c7c5;
+  --tk-term-white: #c8cad0;
+  --tk-term-bright-black: #5d626c;
+  --tk-term-bright-red: #ffa597;
+  --tk-term-bright-green: #a7d690;
+  --tk-term-bright-yellow: #f0c98a;
+  --tk-term-bright-blue: #9fcaf0;
+  --tk-term-bright-magenta: #dcb6f2;
+  --tk-term-bright-cyan: #9adbd8;
+  --tk-term-bright-white: #f2f3f5;
 
   --tk-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --tk-font-mono: ui-monospace, 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospace;
@@ -66,5 +83,22 @@
     --tk-syntax-type: #7b3fb0;
     --tk-syntax-property: #1d6f80;
     --tk-syntax-heading: #9a5a00;
+    /* "White" must stay readable on a light background, so it's a mid gray here. */
+    --tk-term-black: #1f1e1c;
+    --tk-term-red: #b3392c;
+    --tk-term-green: #2f7a3a;
+    --tk-term-yellow: #8a6100;
+    --tk-term-blue: #1f62a8;
+    --tk-term-magenta: #7b3fb0;
+    --tk-term-cyan: #1d6f80;
+    --tk-term-white: #8a877f;
+    --tk-term-bright-black: #6d6a63;
+    --tk-term-bright-red: #c94a3c;
+    --tk-term-bright-green: #3f8f4a;
+    --tk-term-bright-yellow: #a87412;
+    --tk-term-bright-blue: #2f74c0;
+    --tk-term-bright-magenta: #8f52c4;
+    --tk-term-bright-cyan: #2a8597;
+    --tk-term-bright-white: #3a3935;
   }
 }

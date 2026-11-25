@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { baseName, samePath } from '../workspace/fs'
 import { languageOf } from '../editor/languages'
+import { useReview } from './review'
 import { useWorkspace } from './workspace'
 
 /** Files above this size open as a notice instead of in the editor. */
@@ -31,6 +32,11 @@ export const useEditor = defineStore('editor', () => {
   const tabs = ref<Tab[]>([])
   const activePath = ref<string | null>(null)
   const lastError = ref<string | null>(null)
+  /**
+   * Whether the editor panel is shown. The chat is the main view; the editor opens
+   * beside it when a file is opened (or Claude edits one) and can be hidden again.
+   */
+  const panelOpen = ref(false)
 
   const active = computed(() => tabs.value.find((t) => t.path === activePath.value) ?? null)
   const isDirty = (t: Tab) => t.text !== t.savedText
@@ -50,6 +56,7 @@ export const useEditor = defineStore('editor', () => {
 
   async function open(path: string) {
     lastError.value = null
+    panelOpen.value = true
     const existing = find(path)
     if (existing) {
       activePath.value = existing.path
@@ -81,6 +88,8 @@ export const useEditor = defineStore('editor', () => {
       await fs().writeText(tab.path, text)
       tab.savedText = text
       tab.conflict = false
+      // Hand edits to a file under review change what's left to review.
+      useReview().noteText(tab.path, text)
       return true
     } catch (e) {
       lastError.value = `Couldn't save ${tab.name}: ${e}`
@@ -105,6 +114,7 @@ export const useEditor = defineStore('editor', () => {
   function closeAll() {
     tabs.value = []
     activePath.value = null
+    panelOpen.value = false
   }
 
   /**
@@ -150,7 +160,7 @@ export const useEditor = defineStore('editor', () => {
   }
 
   return {
-    tabs, activePath, active, lastError, dirtyCount,
+    tabs, activePath, active, lastError, dirtyCount, panelOpen,
     isDirty, open, updateText, save, saveAll, close, closeAll, onDiskChange, reloadFromDisk, keepMine,
   }
 })

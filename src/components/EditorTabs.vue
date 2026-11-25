@@ -3,6 +3,7 @@ import { ask } from '@tauri-apps/plugin-dialog'
 import { useEditor } from '../stores/editor'
 
 const editor = useEditor()
+defineEmits<{ hide: [] }>()
 
 async function close(path: string) {
   if (editor.close(path)) return
@@ -34,6 +35,8 @@ async function close(path: string) {
       <span v-if="editor.isDirty(t)" class="dirty" aria-label="unsaved changes">●</span>
       <button class="close" :aria-label="`Close ${t.name}`" @click.stop="close(t.path)">×</button>
     </div>
+    <span class="fill" />
+    <button class="hide" title="Hide the editor (Ctrl+Shift+E)" aria-label="Hide the editor" @click="$emit('hide')">⟩</button>
   </div>
 </template>
 
@@ -44,4 +47,7 @@ async function close(path: string) {
 .dirty { color: var(--tk-accent); font-size: 10px; }
 .close { background: none; border: 0; padding: 0 4px; color: var(--tk-text-muted); font-size: 16px; line-height: 1; border-radius: 4px; }
 .close:hover { background: var(--tk-surface-2); color: var(--tk-text); }
+.fill { flex: 1; }
+.hide { position: sticky; right: 0; flex: none; padding: 0 10px; border: 0; border-left: 1px solid var(--tk-border); background: var(--tk-surface); color: var(--tk-text-muted); font-size: 15px; }
+.hide:hover { color: var(--tk-text); }
 </style>

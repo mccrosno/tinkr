@@ -1,7 +1,7 @@
 // File access used by the workspace and editor. The real implementation goes through
 // Tauri's fs plugin (Rust-backed and limited to opened project folders); tests use a fake.
 
-import { readDir, readTextFile, stat, watch, writeTextFile } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, remove, stat, watch, writeTextFile } from '@tauri-apps/plugin-fs'
 
 export interface DirEntry {
   name: string
@@ -13,6 +13,8 @@ export interface FileSystem {
   readDir(dir: string): Promise<DirEntry[]>
   readText(path: string): Promise<string>
   writeText(path: string, text: string): Promise<void>
+  /** Delete a file (rejecting a file Claude created). */
+  remove(path: string): Promise<void>
   size(path: string): Promise<number>
   /** Watch a folder recursively. The callback gets changed paths (debounced). Returns an unwatch function. */
   watch(root: string, onChange: (paths: string[]) => void): Promise<() => void>
@@ -41,6 +43,17 @@ export function samePath(a: string, b: string) {
   return norm(a) === norm(b)
 }
 
+/**
+ * `path` relative to `root` with forward slashes ("src/a.ts"), or `path` unchanged if
+ * it isn't inside `root`. Inside means "starts with root, then a separator", so /p2
+ * isn't inside /p.
+ */
+export function relativeTo(root: string | null, path: string) {
+  const r = root?.replace(/[\\/]+$/, '')
+  const inside = r && samePath(path.slice(0, r.length), r) && /[\\/]/.test(path[r.length] ?? '')
+  return inside ? path.slice(r.length + 1).replaceAll('\\', '/') : path
+}
+
 export const tauriFs: FileSystem = {
   async readDir(dir) {
     const entries = await readDir(dir)
@@ -48,6 +61,7 @@ export const tauriFs: FileSystem = {
   },
   readText: (path) => readTextFile(path),
   writeText: (path, text) => writeTextFile(path, text),
+  remove: (path) => remove(path),
   async size(path) {
     return (await stat(path)).size
   },

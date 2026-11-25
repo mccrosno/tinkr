@@ -29,6 +29,11 @@
   --tk-syntax-type: #c79be3;
   --tk-syntax-property: #9fc6d6;
   --tk-syntax-heading: #f0c98a;
+  /* Diffs of Claude's edits: a line background, and a stronger one for the changed text. */
+  --tk-diff-added-bg: #6cc1891c;
+  --tk-diff-added-strong: #6cc18947;
+  --tk-diff-removed-bg: #ef8a7e1c;
+  --tk-diff-removed-strong: #ef8a7e47;
   /* Terminal: the 16 ANSI colors (programs pick these by number). */
   --tk-term-black: #2a2c33;
   --tk-term-red: #ef8a7e;
@@ -51,6 +56,8 @@
   --tk-font-mono: ui-monospace, 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospace;
   --tk-radius: 8px;
   --tk-radius-sm: 5px;
+  /* Popups and menus. */
+  --tk-shadow: 0 4px 16px #00000066;
 }
 
 @media (prefers-color-scheme: light) {
@@ -83,6 +90,11 @@
     --tk-syntax-type: #7b3fb0;
     --tk-syntax-property: #1d6f80;
     --tk-syntax-heading: #9a5a00;
+    --tk-diff-added-bg: #2f8a4f17;
+    --tk-diff-added-strong: #2f8a4f38;
+    --tk-diff-removed-bg: #b3392c12;
+    --tk-diff-removed-strong: #b3392c33;
+    --tk-shadow: 0 4px 16px #00000024;
     /* "White" must stay readable on a light background, so it's a mid gray here. */
     --tk-term-black: #1f1e1c;
     --tk-term-red: #b3392c;

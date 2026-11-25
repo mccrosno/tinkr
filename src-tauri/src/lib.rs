@@ -1,4 +1,5 @@
 mod config;
+mod pty;
 mod sidecar;
 
 use tauri::RunEvent;
@@ -15,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Register the shared state before anything can use it.
         .manage(sidecar::SidecarState::default())
+        .manage(pty::PtyState::default())
         .setup(|app| {
             // Start the sidecar when the app launches. A failure is logged rather than
             // fatal, so the UI can still open and offer a restart.
@@ -29,15 +31,20 @@ pub fn run() {
             sidecar::sidecar_restart,
             config::get_config,
             config::open_project,
-            config::close_project
+            config::close_project,
+            pty::pty_spawn,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_kill
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         // `run` takes a callback for app lifecycle events. On exit, kill the sidecar
-        // so it doesn't outlive the window.
+        // and any terminal shells so they don't outlive the window.
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 sidecar::stop(app);
+                pty::stop_all(app);
             }
         });
 }

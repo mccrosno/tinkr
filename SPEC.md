@@ -78,7 +78,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 ## Milestones
 1. Window, chat UI, sidecar streaming Claude responses. **Done** (see "Milestone 1 notes" below).
 2. File tree + CodeMirror. **Done** (see "Milestone 2 notes" below).
-3. Terminal.
+3. Terminal. **Done** (see "Milestone 3 notes" below).
 4. Docking layout + saved layouts.
 5. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
 6. Diff review (live diffs, accept/reject/comment).
@@ -187,3 +187,15 @@ What shipped, and decisions made along the way:
 - **Layout:** fixed three columns (tree | editor | chat) with keyboard-accessible splitters; widths are remembered in localStorage. Real docking is Milestone 4.
 - **Tests:** unit tests for path/tree helpers, language detection, the workspace store (lazy load, watcher, restore) and the editor store (dirty/save/reload/conflict/binary/close), using an in-memory fake fs. `e2e/editor.e2e.ts` drives the real window: tree, highlighting, typing + Ctrl+S to disk, external reload, conflict banner, new files appearing, and the chat's working directory.
 - **Windows note:** freshly created files can stay locked by Search/Defender for minutes, so e2e cleanup of its temp folder is best-effort.
+
+## Milestone 3 notes
+- **Rust (`pty.rs`, core module 4):** `pty_spawn`, `pty_write`, `pty_resize`, `pty_kill`, using `portable-pty` 0.9 (ConPTY on Windows). Rust picks the shell and the webview only passes `cwd` and the size: `pwsh` if it's on PATH, otherwise Windows PowerShell (`-NoLogo`); `$SHELL` (or `/bin/sh`) on Linux/macOS, as a login shell (`-l`) on macOS so Dock-launched apps get the user's PATH. Sets `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=tinkr`.
+- **Output:** each terminal gets its own Tauri `Channel`. Output goes as raw bytes (an `ArrayBuffer` in JS), not strings, because a read can end in the middle of a UTF-8 character; xterm.js decodes it. After the last output the same channel sends `{ exitCode }`. A channel is ordered, so the exit never overtakes output.
+- **Threads:** a reader thread per terminal forwards output; a waiter thread owns the child process and blocks until it exits. Then it drops the session (on Windows, ConPTY keeps the output pipe open until the pseudo console is closed), waits for the reader, and sends the exit. Killing uses a separate `ChildKiller` handle, so it works while the waiter is blocked.
+- **Lifetime:** closing a tab kills its shell; app exit kills all shells. Force-killing Tinkr on Windows also ended its shell (closing ConPTY ends the attached process), so terminals don't need the sidecar's Job Object. Not yet tested on Linux/macOS.
+- **UI:** a bottom panel under the editor, toggled with Ctrl+` (or the titlebar "Terminal" button), height adjustable and remembered. Tabs per terminal (`pwsh`, `pwsh 2`, ...); all stay mounted (`v-show`), so hiding the panel or switching tabs keeps the screen and scrollback. A clean `exit` closes the tab (like VS Code); a non-zero exit keeps it with "[Process exited with code N]". Terminals belong to the open folder: switching or closing the folder closes them, after a confirmation if any are running.
+- **Keys:** Ctrl+C copies when text is selected and otherwise interrupts; Ctrl+Shift+C copies; Ctrl+V / Ctrl+Shift+V paste through the browser's paste event. Ctrl+` and Ctrl+O pass through to the app. App shortcuts are now a `window` listener, so they work when nothing is focused. Ctrl/Cmd+click opens URLs in the system browser.
+- **Colors:** xterm.js needs concrete color values, so `src/terminal/theme.ts` reads the CSS tokens (`--tk-bg`, `--tk-text`, the 16 `--tk-term-*` ANSI colors) and re-reads them when the system color scheme changes.
+- **Focus fix:** the chat used to move focus to its input whenever a reply ended, even if the user had moved to the editor or terminal. It now does so only if focus was still in the chat.
+- **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
+- **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.

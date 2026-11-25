@@ -69,6 +69,9 @@ fn add_to_kill_on_exit_job(child: &Child) {
 ///   executable (`externalBin` in tauri.release.conf.json; built by `bun run build:sidecar`).
 fn sidecar_command() -> Result<Command, String> {
     // `cfg!(debug_assertions)` is a compile-time true/false; both branches still compile.
+    // `mut` is only needed by the Windows-only block below, so other platforms would
+    // warn that it's unused; the attribute silences that warning there.
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut cmd = if cfg!(debug_assertions) {
         // `env!` reads CARGO_MANIFEST_DIR (the src-tauri folder) at compile time, and
         // `concat!` joins string literals, so this is a fixed path baked into the binary.

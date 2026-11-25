@@ -44,3 +44,25 @@ function defaultRequest(refs: CodeRef[]) {
 
 /** Two references to the same lines of the same file are the same reference. */
 export const sameRef = (a: CodeRef, b: CodeRef) => a.path === b.path && a.fromLine === b.fromLine && a.toLine === b.toLine
+
+const unattr = (s: string) => s.replace(/&lt;/g, '<').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+
+/**
+ * The reverse of `formatPrompt`, for chats loaded from history: split a stored prompt
+ * back into the user's text and their code references. `joinRoot` turns a project-relative
+ * path into an absolute one (so the chip can open the file); without a project, the
+ * relative path is used as is.
+ */
+export function parsePrompt(prompt: string, joinRoot?: (relPath: string) => string): { text: string; refs: CodeRef[] } {
+  const refs: CodeRef[] = []
+  const re = /<selection file="([^"]*)" lines="(\d+)-(\d+)" purpose="(question|change)">\n([\s\S]*?)\n<\/selection>\s*/g
+  const rest = prompt.replace(re, (_all, file: string, from: string, to: string, purpose: RefPurpose, text: string) => {
+    const relPath = unattr(file)
+    refs.push({ path: joinRoot ? joinRoot(relPath) : relPath, relPath, fromLine: Number(from), toLine: Number(to), text, purpose })
+    return ''
+  })
+  let text = rest.trim()
+  // A reference sent without a question got a stock request; don't show that as typed text.
+  if (refs.length && text === defaultRequest(refs)) text = ''
+  return { text, refs }
+}

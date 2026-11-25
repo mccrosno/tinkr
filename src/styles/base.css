@@ -1,0 +1,23 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #app { margin: 0; height: 100%; }
+body {
+  background: var(--tk-bg);
+  color: var(--tk-text);
+  font: 14px/1.5 var(--tk-font);
+  -webkit-font-smoothing: antialiased;
+}
+button, textarea, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.5; }
+:focus-visible { outline: 2px solid var(--tk-focus); outline-offset: 1px; }
+code, pre, kbd { font-family: var(--tk-font-mono); font-size: 0.92em; }
+
+.tk-button {
+  border: 1px solid var(--tk-border);
+  background: var(--tk-surface-2);
+  border-radius: var(--tk-radius-sm);
+  padding: 4px 12px;
+}
+.tk-button:hover:not(:disabled) { border-color: var(--tk-text-muted); }
+.tk-button.primary { background: var(--tk-accent); border-color: var(--tk-accent); color: var(--tk-on-accent); }
+.tk-button.primary:hover:not(:disabled) { background: var(--tk-accent-hover); }

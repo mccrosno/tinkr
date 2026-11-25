@@ -4,13 +4,13 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude chat with a VSCode-style editor. The core ships minimal; everything else (including the built-in Editor, Chat, File Tree, Terminal, Diff Review) is a plugin, and Claude can write plugins live.
+Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude chat with a VSCode-style editor. The chat is the main focus (it's meant to replace Claude Desktop for the author); the editor is for viewing Claude's changes and small hand edits. The core ships minimal; everything else (including the built-in Editor, Chat, File Tree, Terminal, Diff Review) is a plugin, and Claude can write plugins live.
 
 `SPEC.md` is the source of truth for design decisions. Read it before starting any milestone, and update it when a decision changes (don't let code and spec drift apart).
 
 ## Current status
 
-Spikes in progress (see "Spike findings" in `SPEC.md`). Milestones 1 (chat), 2 (file tree + CodeMirror editor) and 3 (terminal) are done. Next: Milestone 4 (docking layout + saved layouts). All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
+Spikes in progress (see "Spike findings" in `SPEC.md`). Milestones 1 (chat), 2 (file tree + CodeMirror editor) and 3 (terminal) are done. Next: Milestone 4 (Claude edits files with review, the "Ask Claude" selection menu, chat-first layout). The milestone order changed after Milestone 3; see `SPEC.md`. All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
 
 WSL2: the author works on more than one Windows machine. Each one used so far has Ubuntu 24.04 (`wsl -d Ubuntu-24.04 -u root`) with Rust, Bun and the Tauri Linux prerequisites, run as root. A new machine may not: check `wsl -l` first. Build Linux copies in the WSL home folder (e.g. rsync to `~/tinkr`), not on `/mnt/c`.
 

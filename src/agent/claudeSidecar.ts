@@ -71,9 +71,9 @@ export class ClaudeSidecarProvider implements AgentProvider {
     return this.request({ type: 'status' })
   }
 
-  async send(sessionId: string | null, text: string) {
+  async send(sessionId: string | null, text: string, options: { cwd?: string } = {}) {
     const turnId = `t${Date.now().toString(36)}-${this.nextTurn++}`
-    await this.request({ type: 'send', turnId, resumeSessionId: sessionId, text })
+    await this.request({ type: 'send', turnId, resumeSessionId: sessionId, text, cwd: options.cwd })
     return turnId
   }
 

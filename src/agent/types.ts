@@ -26,7 +26,7 @@ export interface AgentProvider {
   /** Re-check installation and login; answered with a `status` event. */
   refreshStatus(): Promise<void>
   /** Send a message. `sessionId` continues a conversation; null starts a new one. Returns the turn id. */
-  send(sessionId: string | null, text: string): Promise<string>
+  send(sessionId: string | null, text: string, options?: { cwd?: string }): Promise<string>
   abort(turnId: string): Promise<void>
   /** Restart the agent process (e.g. after installing or signing in to the CLI). */
   restart(): Promise<void>

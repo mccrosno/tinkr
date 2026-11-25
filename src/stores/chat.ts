@@ -27,8 +27,12 @@ export const useChat = defineStore('chat', () => {
   const sessionId = ref<string | null>(null)
   const activeTurnId = ref<string | null>(null)
   const log = ref<string[]>([])
+  /** Folder the agent works in (Claude Code keeps sessions per folder). Null = home folder. */
+  const projectRoot = ref<string | null>(null)
   /** Turns that already finished; a turn can finish before `send()` returns its id. */
   const finishedTurns = new Set<string>()
+  /** Turns from a chat that was replaced (folder switch); their late events are dropped. */
+  const staleTurns = new Set<string>()
 
   /** Why sending is blocked right now, or null if it isn't. */
   const blocker = computed<string | null>(() => {
@@ -57,6 +61,7 @@ export const useChat = defineStore('chat', () => {
   }
 
   function handle(e: AgentEvent) {
+    if ('turnId' in e && staleTurns.has(e.turnId)) return
     switch (e.type) {
       case 'connected':
         connection.value = 'connected'
@@ -112,7 +117,7 @@ export const useChat = defineStore('chat', () => {
     try {
       // Mark busy before awaiting so a double Enter can't send twice.
       activeTurnId.value = 'pending'
-      const turnId = await provider.value.send(sessionId.value, trimmed)
+      const turnId = await provider.value.send(sessionId.value, trimmed, { cwd: projectRoot.value ?? undefined })
       activeTurnId.value = finishedTurns.has(turnId) ? null : turnId
     } catch (e) {
       activeTurnId.value = null
@@ -127,6 +132,18 @@ export const useChat = defineStore('chat', () => {
 
   function newChat() {
     if (busy.value) return
+    messages.value = []
+    sessionId.value = null
+  }
+
+  /** Switch the folder the agent works in. Conversations don't carry across folders. */
+  async function setProject(root: string | null) {
+    if (root === projectRoot.value) return
+    // A reply still running belongs to the old folder's chat: stop it and ignore its events.
+    if (activeTurnId.value) staleTurns.add(activeTurnId.value)
+    await stop()
+    activeTurnId.value = null
+    projectRoot.value = root
     messages.value = []
     sessionId.value = null
   }
@@ -148,8 +165,8 @@ export const useChat = defineStore('chat', () => {
   }
 
   return {
-    connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log,
+    connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log, projectRoot,
     blocker, busy, canSend,
-    connect, send, stop, newChat, restart, recheck,
+    connect, send, stop, newChat, setProject, restart, recheck,
   }
 })

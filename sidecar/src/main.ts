@@ -34,7 +34,7 @@ async function handle(line: string) {
     case 'send':
       // Make sure the CLI has been checked before the first turn.
       if (cli.state !== 'ok') await status()
-      return agent.send(req.turnId, req.resumeSessionId, req.text)
+      return agent.send(req.turnId, req.resumeSessionId, req.text, req.cwd)
     case 'abort':
       return agent.abort(req.turnId)
     default:

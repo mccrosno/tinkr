@@ -10,6 +10,7 @@
 import { defineStore } from 'pinia'
 import { computed, markRaw, reactive, ref, shallowReactive } from 'vue'
 import type { ActionDefinition, ActionSlot, CommandDefinition, Disposable, PanelDefinition, PanelLocation, PluginManifest, ThemeDefinition } from '../plugins/api'
+import { resolveIcon, type Icon } from '../plugins/icons'
 import { MAX_TRANSLUCENCY, type ResolvedTheme } from '../theme/apply'
 
 export type PluginState = 'loading' | 'active' | 'error' | 'disabled' | 'awaiting-approval'
@@ -30,6 +31,9 @@ export interface PanelEntry {
   title: string
   location: PanelLocation
   closable: boolean
+  icon: Icon | null
+  isEnabled?: () => boolean
+  badge?: () => boolean
   /** The persistent container; `mount` filled it. */
   el: HTMLElement
   visible: boolean
@@ -48,6 +52,7 @@ export interface ActionEntry {
   key: string
   plugin: string
   def: ActionDefinition
+  icon: Icon | null
 }
 
 export interface PresetEntry {
@@ -136,7 +141,15 @@ export const usePlugins = defineStore('plugins', () => {
 
   // --- Panels ---------------------------------------------------------------
 
-  function registerPanel(plugin: string, id: string, def: PanelDefinition): Disposable {
+  /** The icon for a plugin's `icon` string; one that's neither path data nor an .svg file is reported and ignored. */
+  function iconFor(plugin: string, what: string, icon: string | undefined, url: (path: string) => string) {
+    const resolved = resolveIcon(icon, url)
+    if (icon && !resolved) addLog(plugin, 'warn', `${what}: "icon" must be SVG path data (like "M4 6h16") or the path of an .svg file`)
+    return resolved
+  }
+
+  /** A panel; `url` turns a path inside the plugin's folder into a URL (for an icon file). */
+  function registerPanel(plugin: string, id: string, def: PanelDefinition, url: (path: string) => string = (p) => p): Disposable {
     if (panels.has(id)) throw new Error(`a panel with id "${id}" is already registered`)
     const el = document.createElement('div')
     el.className = 'tk-panel-root'
@@ -147,6 +160,10 @@ export const usePlugins = defineStore('plugins', () => {
       title: def.title,
       location: def.location ?? 'right',
       closable: def.closable ?? true,
+      icon: iconFor(plugin, `panel "${id}"`, def.icon, url),
+      // Called on `def`, so a plugin can use `this` in them.
+      isEnabled: def.isEnabled && (() => def.isEnabled!()),
+      badge: def.badge && (() => def.badge!()),
       el: markRaw(el),
       visible: false,
     })
@@ -191,6 +208,17 @@ export const usePlugins = defineStore('plugins', () => {
     // During a reload the plugin will register it again: keep its place in the dock.
     if (!reloading.has(entry.plugin)) for (const l of panelRemovedListeners) l(id)
   }
+
+  /** A plugin's `isEnabled` or `badge`. A broken one must not break the rail: a throw is the default. */
+  function ask(fn: (() => boolean) | undefined, fallback: boolean) {
+    try {
+      return fn ? !!fn() : fallback
+    } catch {
+      return fallback
+    }
+  }
+  const panelEnabled = (id: string) => ask(panels.get(id)?.isEnabled, true)
+  const panelBadge = (id: string) => ask(panels.get(id)?.badge, false)
 
   /** The dock reports what's on screen; panels hear about their own changes. */
   function setPanelVisible(id: string, visible: boolean) {
@@ -240,9 +268,9 @@ export const usePlugins = defineStore('plugins', () => {
 
   // --- Actions and presets ----------------------------------------------------
 
-  function registerAction(plugin: string, key: string, def: ActionDefinition): Disposable {
+  function registerAction(plugin: string, key: string, def: ActionDefinition, url: (path: string) => string = (p) => p): Disposable {
     if (actions.value.some((a) => a.key === key)) throw new Error(`an action with id "${key}" is already registered`)
-    actions.value.push({ key, plugin, def: markRaw(def) })
+    actions.value.push({ key, plugin, def: markRaw(def), icon: iconFor(plugin, `action "${key}"`, def.icon, url) })
     return { dispose: () => (actions.value = actions.value.filter((a) => a.key !== key)) }
   }
 
@@ -296,7 +324,7 @@ export const usePlugins = defineStore('plugins', () => {
   return {
     plugins, panels, commands, actions, presets, themes, log, errors,
     record, upsertPlugin, setState, removePlugin, addLog, clearLog,
-    registerPanel, unregisterPanel, setPanelVisible, onPanelRemoved,
+    registerPanel, unregisterPanel, setPanelVisible, onPanelRemoved, panelEnabled, panelBadge,
     registerCommand, executeCommand, commandForKey,
     registerAction, actionsIn, registerPreset, registerTheme, beginReload, endReload,
   }

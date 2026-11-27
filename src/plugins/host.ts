@@ -81,6 +81,9 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
     return absolute
   }
 
+  /** A URL for a file in the plugin's folder (built-ins pass URLs already). */
+  const fileUrl = (path: string) => plugin.fileUrl?.(path) ?? path
+
   const log = (level: 'info' | 'warn' | 'error') => (...parts: unknown[]) => registry.addLog(plugin.name, level, format(parts))
   const toast = (level: 'info' | 'warn' | 'error') => (message: string) => {
     useNotifications().show({ level, text: message, source: plugin.manifest.displayName ?? plugin.name })
@@ -89,10 +92,10 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
 
   const api: TinkrApi = {
     version: 1,
-    plugin: { name: plugin.name, dir: plugin.dir, manifest: plugin.manifest, url: (path) => plugin.fileUrl?.(path) ?? path },
+    plugin: { name: plugin.name, dir: plugin.dir, manifest: plugin.manifest, url: fileUrl },
 
     panels: {
-      register: (def) => track(registry.registerPanel(plugin.name, fullId(def.id), def)),
+      register: (def) => track(registry.registerPanel(plugin.name, fullId(def.id), def, fileUrl)),
     },
 
     commands: {
@@ -101,7 +104,7 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
     },
 
     actions: {
-      register: (def) => track(registry.registerAction(plugin.name, fullId(def.id), def)),
+      register: (def) => track(registry.registerAction(plugin.name, fullId(def.id), def, fileUrl)),
     },
 
     layout: {
@@ -112,7 +115,7 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
     },
 
     themes: {
-      register: (def) => track(registry.registerTheme(plugin.name, fullId(def.id), def, (path) => plugin.fileUrl?.(path) ?? path)),
+      register: (def) => track(registry.registerTheme(plugin.name, fullId(def.id), def, fileUrl)),
     },
 
     workspace: {

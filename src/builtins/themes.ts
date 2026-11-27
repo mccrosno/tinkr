@@ -7,6 +7,7 @@ import type { BuiltInPlugin } from '../plugins/loader'
 import { useAppearance } from '../stores/appearance'
 import duskUrl from '../assets/themes/dusk.svg'
 import paperUrl from '../assets/themes/paper.svg'
+import { PANEL_ICONS } from './icons'
 import { vueMount } from './vueMount'
 
 function activate(api: TinkrApi) {
@@ -59,7 +60,7 @@ function activate(api: TinkrApi) {
     translucency: 0.2,
   })
 
-  api.panels.register({ id: 'appearance', title: 'Appearance', location: 'right', mount: vueMount(AppearancePanel) })
+  api.panels.register({ id: 'appearance', title: 'Appearance', location: 'right', icon: PANEL_ICONS.appearance, mount: vueMount(AppearancePanel) })
   api.commands.register({ id: 'view.appearance', title: 'View: Appearance', run: () => api.layout.show('appearance') })
   api.commands.register({
     id: 'theme.next',

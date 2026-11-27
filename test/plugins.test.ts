@@ -304,6 +304,35 @@ describe('the plugin API', () => {
     expect(useSettings().data.plugin?.notes).toEqual({ count: 3, list: [1, 2] })
   })
 
+  test('icons: path data is kept, .svg files become URLs in the plugin folder, anything else is reported', () => {
+    const withUrls = createApi({ name: 'p', manifest: { name: 'p' }, dir: null, builtIn: false, fileUrl: (f) => `u/${f}` }).api
+    withUrls.panels.register({ id: 'path', title: 'Path', icon: 'M4 6h16', mount: () => {} })
+    withUrls.panels.register({ id: 'file', title: 'File', icon: 'img/a.svg', mount: () => {} })
+    withUrls.actions.register({ id: 'bad', slot: 'titlebar', title: 'Bad', icon: 'img/a.png', run() {} })
+    expect(registry.panels.get('p.path')?.icon).toEqual({ path: 'M4 6h16' })
+    expect(registry.panels.get('p.file')?.icon).toEqual({ url: 'u/img/a.svg' })
+    expect(registry.actions.find((a) => a.key === 'p.bad')?.icon).toBeNull()
+    expect(registry.log.filter((l) => l.level === 'warn').map((l) => l.text)).toEqual([expect.stringContaining('"icon" must be')])
+  })
+
+  test("panels say whether they're enabled or want attention; a throwing function counts as the default", () => {
+    let errors = false
+    api.panels.register({ id: 'a', title: 'A', isEnabled: () => false, badge: () => errors, mount: () => {} })
+    api.panels.register({
+      id: 'b',
+      title: 'B',
+      isEnabled() {
+        throw new Error('broken')
+      },
+      mount: () => {},
+    })
+    expect([registry.panelEnabled('notes.a'), registry.panelBadge('notes.a')]).toEqual([false, false])
+    errors = true
+    expect(registry.panelBadge('notes.a')).toBe(true)
+    expect([registry.panelEnabled('notes.b'), registry.panelBadge('notes.b')]).toEqual([true, false])
+    expect(registry.panelEnabled('nothing')).toBe(true)
+  })
+
   test('panels: mounted once into their own element, told about visibility, cleaned up on dispose', () => {
     const seen: boolean[] = []
     let mounts = 0
@@ -321,7 +350,7 @@ describe('the plugin API', () => {
       },
     })
     const entry = registry.panels.get('notes.main')!
-    expect(entry).toMatchObject({ title: 'Renamed', location: 'bottom', closable: true })
+    expect(entry).toMatchObject({ title: 'Renamed', location: 'bottom', icon: null })
     registry.setPanelVisible('notes.main', true)
     registry.setPanelVisible('notes.main', true) // no change, no call
     registry.setPanelVisible('notes.main', false)

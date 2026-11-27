@@ -248,7 +248,8 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
 <style scoped>
 .chat { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .drop-hint { position: absolute; inset: 8px; z-index: 5; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--tk-accent); border-radius: var(--tk-radius); background: var(--tk-surface); color: var(--tk-text); font-size: 15px; opacity: 0.92; pointer-events: none; }
-.picker { min-width: 0; max-width: 150px; height: 28px; padding: 0 4px; background: transparent; border: 0; border-radius: 7px; color: var(--tk-text-muted); font-size: 12.5px; cursor: pointer; }
+/* `field-sizing` makes each box as wide as its current choice, not its longest option. */
+.picker { min-width: 0; max-width: 220px; field-sizing: content; height: 28px; padding: 0 4px; background: transparent; border: 0; border-radius: 7px; color: var(--tk-text-muted); font-size: 12.5px; cursor: pointer; }
 .picker:hover { background: var(--tk-surface-2); color: var(--tk-text); }
 /* The open list is drawn by the system and would otherwise inherit the transparent box. */
 .picker option { background: var(--tk-popup); color: var(--tk-text); }

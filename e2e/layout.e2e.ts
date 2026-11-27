@@ -235,11 +235,10 @@ try {
   await until('chat from empty', `${layout}.shown.chat && !document.querySelector('[data-testid=empty-dock]')`, 3000)
   await js(`${layout}.reset()`)
   await until('preset back', `${layout}.visible.chats && ${layout}.visible.chat`, 3000)
-  await js(`window.__tinkrOpenFolder(${JSON.stringify(dir)})`) // the new chat's folder is unchanged; this shows Files again
   pass('closing every panel leaves "Nothing open"; New chat there brings the chat back')
 
   // 9. Save as a new preset from the Layout menu; it survives a reload; reset and delete.
-  await key('`', 'Backquote', 192, CTRL) // hide the terminal: part of the saved arrangement
+  // The terminal stays hidden (it was closed above): part of the saved arrangement.
   await until('terminal hidden', `!${layout}.visible.terminal`)
   await js(`document.querySelector('[data-testid=layout-menu]').click()`)
   await until('menu', `!!document.querySelector('.layout-popup[role=menu]')`, 2000)
@@ -251,18 +250,24 @@ try {
   if ((await js<string | null>(`${layout}.presetForKey(3)`)) !== customId) throw new Error('new preset is not Ctrl+Alt+3')
   if (!(await js<boolean>(`document.querySelector('[data-testid=layout-menu]').title.includes('E2E focus')`))) throw new Error('menu button not updated')
   // Rearrange, then reload: the preset is still active and as it was left.
+  const chatsWidth = () => js<number>(`Math.round(${dock}.getPanel('chats').group.api.width)`)
   await js(`${dock}.getPanel('chats').group.api.setSize({ width: 300 })`)
   await sleep(600) // past the save delay
+  const widened = await chatsWidth() // 300 less the card's share of the gaps
   await js(`location.reload()`)
   await sleep(1500)
   await until('reloaded', `!!${dock} && !!document.querySelector("[data-panel=chat] .chat")`, 30_000)
   if ((await js<string>(`${layout}.activeId`)) !== customId) throw new Error('active preset not remembered')
-  const width = await js<number>(`Math.round(${dock}.getPanel('chats').group.api.width)`)
-  if (Math.abs(width - 300) > 2) throw new Error('arrangement not restored after reload: ' + width)
+  const width = await chatsWidth()
+  if (Math.abs(width - widened) > 0.5) throw new Error(`arrangement not restored after reload: ${widened} -> ${width}`)
+  // Restoring again and again must not shave pixels off (see src/layout/gap.ts).
+  for (let i = 0; i < 4; i++) await js(`${layout}.switchTo('agent'); ${layout}.switchTo(${JSON.stringify(customId)})`)
+  await sleep(200)
+  if (Math.abs((await chatsWidth()) - widened) > 1) throw new Error(`sizes drift: ${widened} -> ${await chatsWidth()}`)
   // Reset: back to how it was saved (the sidebar's earlier width).
   await js(`${layout}.reset()`)
   await sleep(200)
-  if (Math.abs((await js<number>(`Math.round(${dock}.getPanel('chats').group.api.width)`)) - 300) < 2) throw new Error('reset changed nothing')
+  if (Math.abs((await chatsWidth()) - widened) < 2) throw new Error('reset changed nothing')
   // Delete from the menu: back to Agent.
   await js(`document.querySelector('[data-testid=layout-menu]').click()`)
   await until('menu again', `!!document.querySelector('.layout-popup[role=menu]')`, 2000)

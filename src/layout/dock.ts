@@ -13,6 +13,7 @@
 
 import type { AddPanelOptions, DockviewApi, IDockviewPanel } from 'dockview-vue'
 import type { PanelLocation } from '../plugins/api'
+import { withGapShares } from './gap'
 import { findSide, type Place } from './places'
 
 /** A panel's id: a built-in one below, or "<plugin>.<id>". */
@@ -238,7 +239,9 @@ export class Dock implements DockHost {
     const others = this.api.groups
       .filter((g) => g !== group && g.api.isVisible && g.panels.length)
       .map((g) => ({ panel: (g.activePanel ?? g.panels[0]).id, box: g.element.getBoundingClientRect() }))
-    return { mates, side: findSide(mine, others), width: Math.round(mine.width), height: Math.round(mine.height) }
+    // The sizes a card is added with include its share of the gaps, which its box doesn't.
+    const size = (px: number) => Math.round(px + PANEL_GAP / 2)
+    return { mates, side: findSide(mine, others), width: size(mine.width), height: size(mine.height) }
   }
 
   close(id: PanelId) {
@@ -281,15 +284,22 @@ export class Dock implements DockHost {
   }
 
   snapshot() {
-    return { ...this.api.toJSON(), tinkrPlaces: Object.fromEntries(this.places) }
+    const layout = this.api.toJSON()
+    const root = withGapShares(layout.grid.root, PANEL_GAP) // see gap.ts
+    return { ...layout, grid: { ...layout.grid, root }, tinkrPlaces: Object.fromEntries(this.places) }
   }
 
   restore(saved: unknown) {
     if (!saved || typeof saved !== 'object' || !('grid' in saved)) return false
-    const { tinkrPlaces, ...layout } = structuredClone(saved) as Record<string, unknown> & { tinkrPlaces?: Record<string, Place> }
-    // Layouts saved before the interface refresh gave the chat a tab component that's gone.
-    for (const p of Object.values((layout.panels ?? {}) as Record<string, { tabComponent?: string }>)) delete p.tabComponent
+    let tinkrPlaces: Record<string, Place> | undefined
     try {
+      // A copy through JSON: the store hands over Vue's reactive objects, which
+      // `structuredClone` refuses.
+      const copy = JSON.parse(JSON.stringify(saved)) as Record<string, unknown> & { tinkrPlaces?: Record<string, Place> }
+      const { tinkrPlaces: places, ...layout } = copy
+      tinkrPlaces = places
+      // Layouts saved before the interface refresh gave the chat a tab component that's gone.
+      for (const p of Object.values((layout.panels ?? {}) as Record<string, { tabComponent?: string }>)) delete p.tabComponent
       this.api.fromJSON(layout as unknown as Parameters<DockviewApi['fromJSON']>[0])
     } catch {
       return false

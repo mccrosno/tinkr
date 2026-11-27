@@ -2,10 +2,14 @@
 
 Modular agentic code editor. Claude Desktop + VSCode in Tauri. Ships minimal; everything else is a plugin, and Claude can write plugins live.
 
+**Chat first.** Tinkr is primarily the author's replacement for Claude Desktop. The chat is the main window. The editor is secondary: it's there to view Claude's changes and to make changes by hand where needed, not to be the main workspace.
+
 Personal open-source project (MIT) for a portfolio. The author is experienced in frontend, new to Rust. Keep Rust thin and explain Rust code clearly.
 
 ## Goals
+- A chat that can replace Claude Desktop day to day: conversation history, chats with or without a project folder, attachments, and a model/effort picker.
 - Watch Claude edit code live; accept, reject, comment on, or hand-edit changes.
+- Select code anywhere and ask Claude about it or request changes to it (selection menu).
 - Everything is a component: dockable, resizable, replaceable. Claude can create new ones.
 - Full theming: tokens, image/SVG backgrounds.
 - Claude only for v1, behind an interface so other agents can be added.
@@ -43,7 +47,16 @@ Rust core modules (keep to these):
 - Agent edits stream into the editor live as inline diffs.
 - Per hunk: accept, reject, or comment. A comment goes to Claude with file + line range.
 - Manual edits are allowed any time; Claude sees them next turn.
-- Layouts are saved presets (e.g. "Editor", "Agent"), switchable by hotkey.
+- Layouts are saved presets (e.g. "Editor", "Agent"), switchable by hotkey. The default is chat-first (see "Layout").
+
+## Selection menu ("Ask Claude")
+- Selecting text in the editor (and in diffs) offers, via right-click and a small popup next to the selection: **Ask Claude** (a question about it) and **Request changes** (an instruction to edit it). Room for more actions later; plugins can add their own (an `action` in a `selection` slot).
+- Either one puts a reference into the chat composer: file path, line range and the selected text, shown as a removable chip above the message box. The user types the question or instruction and sends it as usual; the reference is sent along with the message.
+- "Request changes" needs Claude's file tools and the review flow, so it ships together with them.
+
+## Layout
+- Default: chat in the center as the main area. The editor opens as a side panel on demand (when a file is opened, or when Claude changes one) and can be closed again. File tree and terminal are collapsible.
+- Docking (later milestone) keeps this as the default "Agent" preset, plus an "Editor" preset closer to a classic IDE.
 
 ## Plugin system (core of the project)
 Location: `~/.config/tinkr/plugins/<name>/` with `plugin.json` and an ES module entry.
@@ -79,12 +92,15 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 1. Window, chat UI, sidecar streaming Claude responses. **Done** (see "Milestone 1 notes" below).
 2. File tree + CodeMirror. **Done** (see "Milestone 2 notes" below).
 3. Terminal. **Done** (see "Milestone 3 notes" below).
-4. Docking layout + saved layouts.
-5. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
-6. Diff review (live diffs, accept/reject/comment).
-7. Themes and backgrounds.
-8. In-app plugin authoring by Claude.
-9. Git install for plugins.
+4. Claude edits files, with review: file tools and permission requests in `AgentProvider`, live diffs with accept/reject/comment, the selection menu ("Ask Claude" / "Request changes"), and the chat-first layout (editor opens on demand).
+5. Chat like Claude Desktop: conversation history (reopen and continue past chats), chats without a project folder, attachments (images and files), model and effort picker.
+6. Docking layout + saved layouts ("Agent" chat-first default, "Editor").
+7. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
+8. Themes and backgrounds.
+9. In-app plugin authoring by Claude.
+10. Git install for plugins.
+
+Order changed after Milestone 3 (author's decision, 2026-11-25): Tinkr is meant to replace Claude Desktop first, so file editing with review and the Desktop chat features come before docking and plugins. Built-ins written before Milestone 7 move onto the plugin API then.
 
 ## First things to verify
 1. SDK auth behavior with an existing Claude Code subscription login.

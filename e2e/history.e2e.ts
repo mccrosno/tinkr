@@ -10,7 +10,7 @@
 // deleting it, and the "All folders" list (opening a past chat of another folder, read-only).
 // Runs as a chat without a folder (the home folder); it closes any open folder first.
 
-import { connect, sleep } from './cdp'
+import { connect, deleteTestChats, sleep } from './cdp'
 
 const cdp = await connect(Number(process.argv[2] ?? 9222))
 const js = <T = unknown>(expr: string) => cdp.evaluate<T>(expr)
@@ -48,14 +48,20 @@ if (await js<boolean>(`!!${ws}.root`)) {
   await js(`${ws}.closeFolder()`)
   await until('folder closed', `${chat}.projectRoot === null`)
 }
-await js(`[...document.querySelectorAll('.tabs [role=tab]')].find(b => b.textContent === 'Chats')?.click()`)
-const before = await js<string[]>(`${chat}.chats.map(c => c.sessionId)`)
+await js(`window.__tinkr.pinia._s.get('layout').show('chats')`)
 
 // 1. Pickers: models from Claude Code, effort levels for the picked model.
 const models = await js<string[]>(`[...document.querySelectorAll('select[aria-label=Model] option')].map(o => o.value)`)
 if (!models.includes('default') || !models.includes('haiku')) throw new Error('model list: ' + models.join(', '))
+// The user's own choices, put back at the end even if a step fails.
 const savedModel = await js<string>(`${chat}.model`)
 const savedEffort = await js<string | null>(`${chat}.effort`)
+const savedAllFolders = await js<boolean>(`${chat}.allFolders`)
+let testSession: string | null = null
+try {
+await js(`${chat}.setAllFolders(false)`)
+await until('one folder', `!${chat}.allFolders && ${chat}.chats.every(c => c.folder === null)`, 10_000)
+const before = await js<string[]>(`${chat}.chats.map(c => c.sessionId)`)
 await pick('Model', 'haiku')
 await until('effort picker', `!!document.querySelector('select[aria-label=Effort]')`, 2000)
 await pick('Effort', 'low')
@@ -95,6 +101,7 @@ pass('Claude reads the dropped image and the picked text file, on Haiku')
 
 // 4. The chat is listed in the sidebar, with a title.
 const sessionId = await js<string>(`${chat}.sessionId`)
+testSession = sessionId
 await until('listed', `!!document.querySelector('.chats li[data-session="${sessionId}"]')`, 10_000)
 const title = await js<string>(`document.querySelector('.chats li[data-session="${sessionId}"] .name').textContent`)
 // Claude Code usually names the chat itself (e.g. "Image color and file password");
@@ -152,8 +159,11 @@ await until('folder closed again', `${chat}.projectRoot === null`, 5000)
 await js(`document.querySelector('[data-testid=all-folders]').click()`)
 await until('one folder again', `!${chat}.allFolders`, 2000)
 
-// Put the pickers back the way they were.
-await js(`${chat}.setModel(${JSON.stringify(savedModel)}); ${chat}.setEffort(${JSON.stringify(savedEffort)})`)
-
 console.log(`\n${results.length} checks passed`)
-cdp.close()
+} finally {
+  // Put the user's choices back, and delete the test chat if a failure left it behind.
+  await js(`${chat}.setModel(${JSON.stringify(savedModel)}); ${chat}.setEffort(${JSON.stringify(savedEffort)})`).catch(() => {})
+  if (testSession) await deleteTestChats(js, { ids: [testSession] }).catch(() => {})
+  await js(`${chat}.setAllFolders(${savedAllFolders})`).catch(() => {})
+  cdp.close()
+}

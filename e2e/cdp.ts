@@ -35,3 +35,22 @@ export async function connect(port = 9222) {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Clean up Tinkr's chat history after a check: delete the chats with the given ids, and
+ * every chat in `folder` (a throwaway folder the check created, so all of its chats are
+ * the check's). Run it while that folder is still open. Returns how many were deleted.
+ */
+export async function deleteTestChats(evaluate: <T>(expr: string) => Promise<T>, { ids = [], folder }: { ids?: (string | null)[]; folder?: string }) {
+  return evaluate<number>(`(async () => {
+    const chat = window.__tinkr.pinia._s.get('chat')
+    await chat.refreshChats()
+    // Windows paths: either slash, any case. (No backslash escapes: this is inside a template string.)
+    const norm = (p) => p.split('/').join(String.fromCharCode(92)).toLowerCase()
+    const ids = new Set(${JSON.stringify(ids.filter(Boolean))})
+    const folder = ${JSON.stringify(folder ?? null)}
+    if (folder) for (const c of chat.chats) if (c.folder && norm(c.folder) === norm(folder)) ids.add(c.sessionId)
+    for (const id of ids) await chat.deleteChat(id)
+    return ids.size
+  })()`)
+}

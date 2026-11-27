@@ -1,0 +1,2 @@
+/* Extra CSS that's on while the theme is. Use the tokens (var(--tk-...)) for colors. */
+.titlebar strong { color: var(--tk-accent); }

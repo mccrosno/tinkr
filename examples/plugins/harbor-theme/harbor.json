@@ -1,0 +1,19 @@
+{
+  "id": "harbor",
+  "name": "Harbor",
+  "kind": "dark",
+  "tokens": {
+    "bg": "#0b1a24",
+    "surface": "#10232f",
+    "surface-2": "#163040",
+    "border": "#21445a",
+    "accent": "#3fb0c9",
+    "accent-hover": "#62c3d8",
+    "on-accent": "#04161d",
+    "user-bubble": "#143a4c"
+  },
+  "background": { "image": "img/waves.svg", "size": "tile" },
+  "translucency": 0.3,
+  "blur": 8,
+  "cssFile": "harbor.css"
+}

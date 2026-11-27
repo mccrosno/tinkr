@@ -24,11 +24,17 @@ async function until(label: string, expr: string, timeoutMs = 90_000) {
   throw new Error('timed out waiting for: ' + label)
 }
 
+/** Open the agent status dot's menu (in the rail, or the title bar while that's collapsed). */
+const openAgentMenu = async () => {
+  await js(`document.querySelector('[data-testid=agent-button]').click()`)
+  await until('agent menu', `!!document.querySelector('[data-testid=agent-status]')`, 2000)
+}
+
 /** Type into the composer the way a user would (input event), then click Send. */
 async function sendViaUi(message: string) {
   await js(`(() => { const t = document.querySelector('textarea'); t.value = ${JSON.stringify(message)}; t.dispatchEvent(new Event('input')); })()`)
   await sleep(50)
-  await js(`[...document.querySelectorAll('.composer button')].find(b => b.textContent.trim() === 'Send').click()`)
+  await js(`document.querySelector('.composer [data-testid=send]').click()`)
 }
 const lastAssistant = () => js<string>(`[...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? ''`)
 
@@ -36,11 +42,15 @@ const lastAssistant = () => js<string>(`[...document.querySelectorAll('.msg.assi
 await js(`location.reload()`)
 await sleep(1500)
 
-// 1. Status bar shows the CLI and login found by the sidecar.
+// 1. The agent status menu shows the CLI and login found by the sidecar.
 await until('status', `${chat}.cli?.state === 'ok' && !!${chat}.auth`)
-console.log('  status bar:', await text('[data-testid=agent-status]'), '|', await text('[data-testid=auth-status]'))
+await openAgentMenu()
+const status = await text('[data-testid=agent-status]')
+console.log('  agent:', status, '|', await text('[data-testid=auth-status]'))
+if (!status.startsWith('Claude Code ')) throw new Error('agent status: ' + status)
 if ((await js<string>(`${chat}.auth.state`)) !== 'subscription') console.log('  (note: not a subscription login)')
-pass('status bar shows Claude Code version and login')
+await js(`document.querySelector('[data-testid=agent-button]').click()`)
+pass('the agent status menu shows Claude Code version and login')
 
 // 2. A message streams into the chat, rendered as Markdown.
 await sendViaUi('Reply with a Markdown bullet list of three fruits and nothing else.')
@@ -68,7 +78,7 @@ pass('follow-up resumes the conversation')
 // 4. Stop interrupts a long reply.
 await sendViaUi('Write a 500-word story about a lighthouse keeper.')
 await until('story starts', `${chat}.messages.at(-1).role === 'assistant' && ${chat}.messages.at(-1).text.length > 20`)
-await js(`[...document.querySelectorAll('.composer button')].find(b => b.textContent.trim() === 'Stop').click()`)
+await js(`document.querySelector('.composer [data-testid=stop]').click()`)
 await until('stopped', `!${chat}.busy`, 20_000)
 console.log('  stopped after', (await lastAssistant()).length, 'chars; meta:', await js(`[...document.querySelectorAll('.msg.assistant .meta')].at(-1)?.textContent`))
 if ((await js<string>(`${chat}.messages.at(-1).done?.outcome`)) !== 'aborted') throw new Error('expected outcome "aborted"')
@@ -76,13 +86,14 @@ pass('Stop aborts a running reply')
 
 // 5. New chat clears the conversation.
 const testSession = await js<string | null>(`${chat}.sessionId`) // deleted at the end
-await js(`[...document.querySelectorAll('.titlebar button')].find(b => b.textContent.includes('New chat')).click()`)
+await js(`document.querySelector('[data-testid=new-chat]').click()`) // in the Chats panel
 await sleep(100)
 if ((await js<number>(`${chat}.messages.length`)) !== 0 || (await js(`${chat}.sessionId`)) !== null) throw new Error('new chat did not reset')
 pass('New chat starts fresh')
 
 // 6. Restarting the agent reconnects and re-checks status.
-await js(`[...document.querySelectorAll('.statusbar button')].find(b => b.textContent.includes('Restart')).click()`)
+await openAgentMenu()
+await js(`document.querySelector('[data-testid=restart-agent]').click()`)
 await until('reconnected', `${chat}.connection === 'connected' && ${chat}.cli?.state === 'ok'`)
 await sleep(1500) // make sure the old process's exit event didn't mark us disconnected
 if ((await js<string>(`${chat}.connection`)) !== 'connected') throw new Error('stale exit event disconnected the UI')

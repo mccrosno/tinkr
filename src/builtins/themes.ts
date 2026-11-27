@@ -7,6 +7,7 @@ import type { BuiltInPlugin } from '../plugins/loader'
 import { useAppearance } from '../stores/appearance'
 import duskUrl from '../assets/themes/dusk.svg'
 import paperUrl from '../assets/themes/paper.svg'
+import { PANEL_ICONS } from './icons'
 import { vueMount } from './vueMount'
 
 function activate(api: TinkrApi) {
@@ -20,7 +21,7 @@ function activate(api: TinkrApi) {
     name: 'Midnight',
     kind: 'dark',
     tokens: {
-      window: '#0d1117',
+      window: '#06090d',
       bg: '#0d1117',
       surface: '#131a24',
       'surface-2': '#1a2330',
@@ -59,7 +60,7 @@ function activate(api: TinkrApi) {
     translucency: 0.2,
   })
 
-  api.panels.register({ id: 'appearance', title: 'Appearance', location: 'right', mount: vueMount(AppearancePanel) })
+  api.panels.register({ id: 'appearance', title: 'Appearance', location: 'right', icon: PANEL_ICONS.appearance, mount: vueMount(AppearancePanel) })
   api.commands.register({ id: 'view.appearance', title: 'View: Appearance', run: () => api.layout.show('appearance') })
   api.commands.register({
     id: 'theme.next',
@@ -70,7 +71,6 @@ function activate(api: TinkrApi) {
       a.select(a.themes[(i + 1) % a.themes.length].id)
     },
   })
-  api.actions.register({ id: 'appearance', slot: 'statusbar', order: 5, title: 'Theme', tooltip: 'Themes and effects', run: () => api.layout.show('appearance') })
 }
 
 export const themes: BuiltInPlugin = {

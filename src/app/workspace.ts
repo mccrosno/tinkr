@@ -79,5 +79,6 @@ export async function openChatIn(folder: string | null, sessionId: string) {
     return
   }
   await chat.setProject(ws.root)
+  useLayout().show('chat') // it may have been closed
   await chat.openChat(sessionId)
 }

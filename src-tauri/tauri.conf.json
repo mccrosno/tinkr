@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "Tinkr", "width": 1100, "height": 760, "minWidth": 480, "minHeight": 360, "dragDropEnabled": false }
+      { "title": "Tinkr", "width": 1100, "height": 760, "minWidth": 480, "minHeight": 360, "decorations": false, "dragDropEnabled": false }
     ],
     "security": { "csp": null }
   },

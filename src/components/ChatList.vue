@@ -1,18 +1,26 @@
 <script setup lang="ts">
-// Past chats in the current folder (or the chats without a folder), newest first, or
+// Past chats in the current folder (or the chats without a folder), grouped by day, or
 // with "All folders" every chat Claude Code has stored: from Tinkr, the CLI and
 // Desktop's Code tab alike. Click one to show it and continue it (a chat of another
 // folder asks the app to open that folder first); rename or delete it from its row.
 import { computed, nextTick, ref } from 'vue'
 import { ask } from '@tauri-apps/plugin-dialog'
 import type { ChatSummary } from '../agent/types'
+import { UI_ICONS } from '../builtins/icons'
+import { groupByDay, timeAgo } from '../chat/dates'
 import { useChat } from '../stores/chat'
 import { useWorkspace } from '../stores/workspace'
 import { baseName } from '../workspace/fs'
+import AppIcon from './AppIcon.vue'
 
 const chat = useChat()
 const ws = useWorkspace()
-const emit = defineEmits<{ 'open-elsewhere': [folder: string | null, sessionId: string] }>()
+const emit = defineEmits<{
+  'new-chat': []
+  /** A chat of this folder was picked: the Chat panel should be on screen. */
+  'show-chat': []
+  'open-elsewhere': [folder: string | null, sessionId: string]
+}>()
 const filter = ref('')
 /** The chat whose name is being edited, and the text in its box. */
 const renaming = ref<string | null>(null)
@@ -26,24 +34,13 @@ const shown = computed(() => {
 })
 
 const folderLabel = (c: ChatSummary) => (c.folder ? baseName(c.folder) : 'No folder')
+const groups = computed(() => groupByDay(shown.value))
 
 function open(c: ChatSummary) {
-  if (chat.isHere(c.folder)) chat.openChat(c.sessionId)
-  else emit('open-elsewhere', c.folder, c.sessionId)
-}
-
-/** "3 min ago", "Yesterday", "12 Nov": short enough for a narrow sidebar. */
-function when(ms: number) {
-  const minutes = Math.round((Date.now() - ms) / 60_000)
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} h ago`
-  const days = Math.round(hours / 24)
-  if (days === 1) return 'Yesterday'
-  if (days < 7) return `${days} days ago`
-  const d = new Date(ms)
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) })
+  if (!chat.isHere(c.folder)) return emit('open-elsewhere', c.folder, c.sessionId)
+  emit('show-chat')
+  // The current chat only needs showing; loading it again would lose its place.
+  if (c.sessionId !== chat.sessionId) chat.openChat(c.sessionId)
 }
 
 async function startRename(id: string, title: string) {
@@ -72,63 +69,82 @@ async function remove(id: string, title: string) {
 
 <template>
   <nav class="chats" aria-label="Chats">
-    <div class="header">
-      <span class="title" :title="chat.allFolders ? 'Every chat Claude Code has stored' : (ws.root ?? 'Chats without a folder')">
-        {{ chat.allFolders ? 'All chats' : ws.root ? `Chats in ${ws.name}` : 'Chats without a folder' }}
-      </span>
-      <button class="tk-button" title="New chat (Ctrl+N)" :disabled="chat.busy" @click="chat.newChat()">New</button>
+    <button type="button" class="new-chat" title="New chat (Ctrl+N)" data-testid="new-chat" :disabled="chat.busy" @click="emit('new-chat')">
+      <AppIcon :icon="{ path: UI_ICONS.plus }" :size="16" />
+      New chat
+    </button>
+    <div class="scope" role="group" aria-label="Which chats to list">
+      <button
+        type="button"
+        :aria-pressed="!chat.allFolders"
+        :title="ws.root ?? 'Chats without a folder'"
+        data-testid="this-folder"
+        @click="chat.setAllFolders(false)"
+      >
+        {{ ws.root ? 'This folder' : 'No folder' }}
+      </button>
+      <button
+        type="button"
+        :aria-pressed="chat.allFolders"
+        title="Chats from every folder, including ones started in the Claude Code CLI or Claude Desktop's Code tab"
+        data-testid="all-folders"
+        @click="chat.setAllFolders(true)"
+      >
+        All folders
+      </button>
     </div>
-    <label class="scope" title="Show chats from every folder, including ones started in the Claude Code CLI or Claude Desktop's Code tab">
-      <input type="checkbox" :checked="chat.allFolders" data-testid="all-folders" @change="chat.setAllFolders(($event.target as HTMLInputElement).checked)" />
-      All folders
-    </label>
     <input v-if="chat.chats.length > 6" v-model="filter" class="filter" type="search" placeholder="Search chats" aria-label="Search chats" />
     <p v-if="chat.chatsError" class="error" role="alert">{{ chat.chatsError }}</p>
-    <ul>
-      <li
-        v-for="c in shown"
-        :key="c.sessionId"
-        :class="{ active: c.sessionId === chat.sessionId }"
-        :aria-current="c.sessionId === chat.sessionId ? 'true' : undefined"
-        :data-session="c.sessionId"
-      >
-        <input
-          v-if="renaming === c.sessionId"
-          ref="renameInput"
-          v-model="renameText"
-          class="rename"
-          aria-label="Chat name"
-          @keydown.enter.prevent="finishRename(true)"
-          @keydown.escape.prevent="finishRename(false)"
-          @blur="finishRename(true)"
-        />
-        <button
-          v-else
-          class="open"
-          :title="chat.busy && c.sessionId !== chat.sessionId ? 'Wait for the reply to finish' : [c.title, c.folder].filter(Boolean).join('\n')"
-          :disabled="chat.busy && c.sessionId !== chat.sessionId"
-          @click="open(c)"
-          @dblclick="startRename(c.sessionId, c.title)"
-        >
-          <span class="name">{{ c.title }}</span>
-          <span class="when">
-            <template v-if="chat.allFolders"><span class="folder">{{ folderLabel(c) }}</span> · </template>{{ when(c.lastModified) }}
-          </span>
-        </button>
-        <span v-if="renaming !== c.sessionId" class="actions">
-          <button class="icon" title="Rename" :aria-label="`Rename ${c.title}`" @click="startRename(c.sessionId, c.title)">✎</button>
-          <button
-            class="icon"
-            title="Delete"
-            :aria-label="`Delete ${c.title}`"
-            :disabled="chat.busy && c.sessionId === chat.sessionId"
-            @click="remove(c.sessionId, c.title)"
+    <div class="list">
+      <section v-for="group in groups" :key="group.label" :aria-label="group.label">
+        <h3>{{ group.label }}</h3>
+        <ul>
+          <li
+            v-for="c in group.chats"
+            :key="c.sessionId"
+            :class="{ active: c.sessionId === chat.sessionId }"
+            :aria-current="c.sessionId === chat.sessionId ? 'true' : undefined"
+            :data-session="c.sessionId"
           >
-            ×
-          </button>
-        </span>
-      </li>
-    </ul>
+            <input
+              v-if="renaming === c.sessionId"
+              ref="renameInput"
+              v-model="renameText"
+              class="rename"
+              aria-label="Chat name"
+              @keydown.enter.prevent="finishRename(true)"
+              @keydown.escape.prevent="finishRename(false)"
+              @blur="finishRename(true)"
+            />
+            <button
+              v-else
+              class="open"
+              :title="chat.busy && c.sessionId !== chat.sessionId ? 'Wait for the reply to finish' : [c.title, c.folder].filter(Boolean).join('\n')"
+              :disabled="chat.busy && c.sessionId !== chat.sessionId"
+              @click="open(c)"
+              @dblclick="startRename(c.sessionId, c.title)"
+            >
+              <span class="name">{{ c.title }}</span>
+              <span class="when">
+                <template v-if="chat.allFolders"><span class="folder">{{ folderLabel(c) }}</span> · </template>{{ timeAgo(c.lastModified) }}
+              </span>
+            </button>
+            <span v-if="renaming !== c.sessionId" class="actions">
+              <button class="icon" title="Rename" :aria-label="`Rename ${c.title}`" @click="startRename(c.sessionId, c.title)">✎</button>
+              <button
+                class="icon"
+                title="Delete"
+                :aria-label="`Delete ${c.title}`"
+                :disabled="chat.busy && c.sessionId === chat.sessionId"
+                @click="remove(c.sessionId, c.title)"
+              >
+                ×
+              </button>
+            </span>
+          </li>
+        </ul>
+      </section>
+    </div>
     <p v-if="!chat.chats.length && !chat.chatsError" class="empty">
       {{ chat.allFolders ? 'No chats yet.' : ws.root ? 'No chats in this folder yet.' : 'No chats without a folder yet.' }}
     </p>
@@ -137,15 +153,19 @@ async function remove(id: string, title: string) {
 </template>
 
 <style scoped>
-.chats { height: 100%; display: flex; flex-direction: column; background: var(--tk-surface); font-size: 13px; min-width: 0; }
-.header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--tk-border); }
-.title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scope { display: flex; align-items: center; gap: 6px; padding: 6px 12px 0; color: var(--tk-text-muted); font-size: 12.5px; cursor: pointer; }
-.scope input { margin: 0; accent-color: var(--tk-accent); }
+.chats { height: 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; font-size: 13px; min-width: 0; }
+.new-chat { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 30px; margin: 0 8px; border: 1px solid var(--tk-border); border-radius: 8px; background: none; font-weight: 600; white-space: nowrap; }
+.new-chat:hover:not(:disabled) { background: var(--tk-surface-2); }
+.new-chat:disabled { opacity: 0.5; }
+.scope { flex: none; display: flex; gap: 2px; margin: 0 8px; padding: 2px; border-radius: 8px; background: var(--tk-surface); }
+.scope button { flex: 1; min-width: 0; height: 24px; overflow: hidden; border: 0; border-radius: 6px; background: none; color: var(--tk-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.scope button[aria-pressed='true'] { background: var(--tk-surface-2); color: var(--tk-text); }
 .folder { color: var(--tk-text); }
-.filter { margin: 8px 8px 0; padding: 4px 8px; background: var(--tk-bg); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); }
+.filter { flex: none; margin: 0 8px; padding: 4px 8px; background: var(--tk-bg); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); }
 .filter:focus { border-color: var(--tk-accent); outline: none; }
-ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1; }
+.list { flex: 1; overflow: auto; padding-bottom: 4px; }
+h3 { margin: 0; padding: 6px 12px 2px; font-size: 11px; font-weight: 600; color: var(--tk-text-muted); }
+ul { list-style: none; margin: 0; padding: 0; }
 li { position: relative; display: flex; align-items: center; }
 li:hover, li:focus-within { background: var(--tk-surface-2); }
 li.active { background: var(--tk-selection); }

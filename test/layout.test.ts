@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { createPinia, setActivePinia } from 'pinia'
-import type { BuiltInPresetId, DockHost, PanelId } from '../src/layout/dock'
+import type { BuiltInPresetId, DockEdge, DockHost, PanelId, SplitSide } from '../src/layout/dock'
+import { createApi } from '../src/plugins/host'
 import { useLayout, type KeyValueStore } from '../src/stores/layout'
 
 /**
@@ -28,8 +29,21 @@ class FakeDock implements DockHost {
   }
   hide(id: PanelId) {
     const p = this.panels.get(id)
-    if (p && id !== 'chat') p.hidden = true
+    if (p) p.hidden = true
     this.changed()
+  }
+  retract(ids: PanelId[]) {
+    for (const id of ids) this.hide(id)
+  }
+  putAway(id: PanelId) {
+    if (this.isShown(id)) this.hide(id)
+  }
+  moves: string[] = []
+  split(id: PanelId, side: SplitSide) {
+    this.moves.push(`${id} split ${side}`)
+  }
+  toEdge(id: PanelId, edge: DockEdge) {
+    this.moves.push(`${id} to ${edge}`)
   }
   isShown(id: PanelId) {
     return this.isVisible(id) && (this.front === id || id === 'chat')
@@ -38,7 +52,7 @@ class FakeDock implements DockHost {
     const p = this.panels.get(id)
     return !!p && !p.hidden
   }
-  remove(id: PanelId) {
+  close(id: PanelId) {
     this.panels.delete(id)
     this.changed()
   }
@@ -54,7 +68,7 @@ class FakeDock implements DockHost {
       return false
     }
     const s = saved as { panels: [PanelId, boolean][]; front: PanelId | null }
-    if (!s?.panels?.some(([id]) => id === 'chat')) return false
+    if (!Array.isArray(s?.panels)) return false
     this.panels = new Map(s.panels.map(([id, hidden]) => [id, { hidden }]))
     this.front = s.front
     return true
@@ -186,6 +200,51 @@ describe('layout presets', () => {
     expect(layout.shown.files).toBe(true)
     layout.toggle('files')
     expect(layout.visible.files).toBe(false)
+  })
+
+  test('a panel is open, hidden or closed; any panel can be closed, the chat included', () => {
+    expect(layout.state('chat')).toBe('open')
+    layout.hide('chat')
+    expect(layout.state('chat')).toBe('hidden')
+    layout.close('chat')
+    expect(layout.state('chat')).toBe('closed')
+    layout.show('chat')
+    expect(layout.state('chat')).toBe('open')
+  })
+
+  test('the dock is empty only when nothing is on screen, and only once it exists', () => {
+    setActivePinia(createPinia())
+    expect(useLayout().empty).toBe(false) // not laid out yet
+    start()
+    expect(layout.empty).toBe(false)
+    for (const id of ['chats', 'files', 'editor', 'terminal']) layout.hide(id)
+    expect(layout.empty).toBe(false)
+    layout.close('chat')
+    expect(layout.empty).toBe(true)
+    // An empty arrangement is a real one: it comes back on the next launch.
+    layout.saveNow()
+    const saved = mem.data
+    start((m) => (m.data = saved))
+    expect(dock.built).toEqual([])
+    expect(layout.empty).toBe(true)
+  })
+
+  test("a removed plugin panel doesn't stay marked as on screen", () => {
+    // Registering a panel makes its content element; there's no DOM in unit tests.
+    const global = globalThis as { document?: unknown }
+    const realDocument = global.document
+    global.document = { createElement: () => ({ dataset: {}, remove() {} }) }
+    try {
+      const handle = createApi({ name: 'p', manifest: { name: 'p' }, dir: null, builtIn: false })
+      handle.api.panels.register({ id: 'x', title: 'X', mount: () => {} })
+      layout.show('p.x')
+      expect(layout.visible['p.x']).toBe(true)
+      handle.disposeAll()
+      expect(layout.visible['p.x']).toBe(false)
+      expect(layout.state('p.x')).toBe('closed')
+    } finally {
+      global.document = realDocument
+    }
   })
 
   test('a preset id that no longer exists falls back to Agent', () => {

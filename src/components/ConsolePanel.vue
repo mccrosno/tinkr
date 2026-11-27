@@ -48,7 +48,7 @@ watch(
 
 <style scoped>
 .console { flex: 1; min-height: 0; display: flex; flex-direction: column; font-size: 12.5px; }
-.bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--tk-border); background: var(--tk-surface); }
+.bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--tk-border); }
 .bar label { display: flex; align-items: center; gap: 6px; color: var(--tk-text-muted); }
 .spacer { flex: 1; }
 .lines { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 4px 0; list-style: none; font-family: var(--tk-font-mono); }

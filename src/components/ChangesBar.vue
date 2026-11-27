@@ -50,7 +50,7 @@ async function rejectAll() {
 </template>
 
 <style scoped>
-.changes { border-top: 1px solid var(--tk-border); background: var(--tk-surface); font-size: 13px; padding: 6px 0; }
+.changes { border-top: 1px solid var(--tk-border); font-size: 13px; padding: 6px 0; margin-bottom: 8px; }
 .column { max-width: 780px; margin: 0 auto; padding: 0 20px; }
 header, li { display: flex; align-items: center; gap: 8px; }
 header .tk-button { padding: 1px 10px; font-size: 12.5px; white-space: nowrap; }

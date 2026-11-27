@@ -56,7 +56,49 @@ Rust core modules (keep to these):
 
 ## Layout
 - Default: chat in the center as the main area. The editor opens as a side panel on demand (when a file is opened, or when Claude changes one) and can be closed again. File tree and terminal are collapsible.
-- Docking (later milestone) keeps this as the default "Agent" preset, plus an "Editor" preset closer to a classic IDE.
+- Docking keeps this as the default "Agent" preset, plus an "Editor" preset closer to a classic IDE.
+
+## Interface (Milestone 9)
+Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel rail. It replaces the text buttons in the titlebar and the status bar, which took up too much room, and makes a new panel (a plugin's included) look and behave like any built-in one.
+
+### Window
+- One combined title bar in place of the OS title bar plus Tinkr's own: logo, rail button, project menu (open and close folder, recent folders), command search (opens the palette), layout presets as an icon menu, window controls.
+- Tinkr draws the window controls (`decorations: false` in `tauri.conf.json` plus the window permissions in capabilities; no new Rust module). macOS keeps its native traffic lights. Check dragging, double-click to maximize and Windows 11 snap layouts, which a custom title bar doesn't get for free.
+- No status bar.
+
+### Panels
+- Every dock group is a rounded card with a small gap around it (dockview's theme `gap`). Its tab bar is restyled as the card's header: tabs are pills, so a single tab reads as a title.
+- Docking works as before: drag a tab to split a group (left, right, up, down), stack it as a tab, or drop it on an outer edge of the dock; drag the gaps to resize. A panel menu in the header splits and moves to an edge without dragging, and pins, unpins or closes the panel.
+- Every panel can be closed from that menu, the chat included. Closing the chat panel doesn't end the conversation: the draft and a running reply are there when it comes back. "New chat" (Ctrl+N) and opening a chat from the list show the panel again.
+
+### Empty dock
+- When no panel is on screen (all closed or hidden), the dock shows a quiet, centered message: the logo, "Nothing open", "Open something to get started."
+- Under it, a short list of shortcuts: **New chat** (Ctrl+N), **Resume last chat**, **Open folder…** (Ctrl+O) and **All panels** (the "+" list).
+- "Resume last chat" shows that chat's title and how long ago it was used, so it's clear what will open. A long title is cut off with an ellipsis, with the full title on hover. It's the most recently used chat in the Chats list for the current folder (or among the chats without a folder), and the row is left out if there is none. Choosing it shows the chat panel with that chat.
+
+### Rail
+- A narrow strip left of the dock, not itself a dock panel, holding the pinned panels' icons. Any panel can be pinned: drag its tab onto the rail, or use the panel menu or the "+" list. A pin is a shortcut; the panel itself can be anywhere in the dock.
+- Clicking an icon shows the panel where it is (a closed one comes back to its last place, or its default location). Clicking the icon of a panel already on screen hides its group and keeps its place. This replaces the Milestone 6 rules that kept the chat from being closed or hidden.
+- Ctrl+Shift+E and Ctrl+` (and closing the last editor tab or terminal) hide the panel's group too, if the panel is the tab in front. A group shared with the chat stays, and only that panel is closed. A background tab is left alone. Ctrl+B hides the group of Chats and Files only if nothing else is on it; otherwise it closes just those two.
+- "+" lists every registered panel with its state and a pin toggle. A newly registered plugin panel appears there and isn't pinned until the user pins it.
+- Pinned by default: Chat, Chats, Files, Editor, Terminal, Console. Pins are saved in `settings.json` and are the same in every layout preset.
+- Editor and Terminal icons are dimmed while there's nothing to show (no open file; no open folder). The Console icon gets a badge while there are errors.
+- At the bottom: the agent status dot (green, amber or red). Its menu has the Claude Code version, the active login, the agent log and "Restart agent".
+
+### Collapsing the rail
+- The whole rail can be collapsed from a button on the rail, the title bar button, or Ctrl+Shift+B. The dock takes the freed width; panels don't move or close. The choice is saved in `settings.json`.
+- While it's collapsed, the agent status dot and any `statusbar` actions move to the title bar. Panels are still reachable through the command palette and their shortcuts.
+- Ctrl+B keeps showing or hiding Chats and Files.
+
+### Chat
+- The message box is one rounded card: attach (icon), compact model and effort pickers, a round Send / Stop button.
+- The chat list gets a "New chat" button at the top, date groups (Today, Yesterday, Earlier), a "This folder / All folders" switch, and rename and delete on hover.
+
+### Plugin API
+- Slot names stay, so existing plugins keep working: `titlebar` actions become icon buttons beside the layout menu, `statusbar` actions move to the bottom of the rail, `chat-toolbar` actions sit in the message box, `selection` is unchanged.
+- `PanelDefinition` and `ActionDefinition` get an optional `icon`; without one, the first letter of the title is shown. Additive, so the API stays version 1.
+- An icon is either SVG path data on a 24×24 grid (drawn as a line icon), or the path of an `.svg` file in the plugin's folder (used as a mask, so its own colors are ignored). Both are drawn in the theme's text color. Decided 2026-11-27.
+- `PanelDefinition` also gets optional `isEnabled()` (false = the rail icon is dimmed because there's nothing to show) and `badge()` (true = a dot on the icon). The built-in Editor, Terminal, Console and Chat panels use them, the same way a plugin can.
 
 ## Plugin system (core of the project)
 Location: `~/.config/tinkr/plugins/<name>/` with `plugin.json` and an ES module entry.
@@ -71,10 +113,10 @@ export function activate(api: TinkrApi) {
 }
 ```
 - Panels use `mount(el, ctx) => cleanup`: framework-agnostic, no build step needed. `mount` runs once per registration; the dock moves the element, it never rebuilds it. Optional esbuild step for Vue/React plugins.
-- Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu.
+- Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu (where each one appears: see "Interface").
 - Commands have optional keybindings and are listed in the command palette (Ctrl+Shift+P). A plugin's ids are prefixed with its name (`notes.refresh`); built-ins keep bare ids.
-- Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 10.
-- Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands, shortcuts and buttons) are plugins using the same API.
+- Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 11.
+- Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands and shortcuts) are plugins using the same API.
 - Hot reload on file change. Plugin load errors surface in the Console panel AND are fed to the agent ("Ask Claude to fix" puts the error and the plugin's folder in the message box).
 - Plugins are trusted code. A plugin Tinkr hasn't seen before doesn't run until the user approves it in a dialog that says so; the answer is kept in settings.json.
 
@@ -101,10 +143,13 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 6. Docking layout + saved layouts ("Agent" chat-first default, "Editor"). **Done** (see "Milestone 6 notes" below).
 7. Plugin loader, slots, hot reload (move built-ins onto the plugin API). **Done** (see "Milestone 7 notes" below).
 8. Themes and backgrounds. **Done** (see "Milestone 8 notes" below).
-9. In-app plugin authoring by Claude.
-10. Git install for plugins.
+9. Interface refresh: combined title bar, floating panel cards, a collapsible pinned-panel rail (see "Interface"). **Built** (see "Milestone 9 notes" below); the title bar's window behaviour still needs checking by hand.
+10. In-app plugin authoring by Claude.
+11. Git install for plugins.
 
 Order changed after Milestone 3 (author's decision, 2026-11-25): Tinkr is meant to replace Claude Desktop first, so file editing with review and the Desktop chat features come before docking and plugins. Built-ins written before Milestone 7 move onto the plugin API then.
+
+The interface refresh was added after Milestone 8 (author's decision, 2026-11-27), ahead of plugin authoring so that the guide Claude gets for writing plugins describes the final panel and button behaviour.
 
 ## First things to verify
 1. SDK auth behavior with an existing Claude Code subscription login.
@@ -220,6 +265,19 @@ What shipped, and decisions made along the way:
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
 
+## Milestone 9 notes
+The interface refresh. Notes for earlier milestones describe the interface as it was then (titlebar buttons, status bar, fixed columns).
+
+- **Removed:** the status bar, and the built-in title bar buttons (Open folder, Sidebar, Editor, Terminal, New chat, Plugins, Console, Theme). Each is still reachable by a shortcut, a rail icon, a menu or the command palette. `PanelDefinition.closable` is ignored: every panel can be closed.
+- **Closed panels' places** (`src/layout/places.ts`): dockview forgets a closed panel, so the dock records its tab-mates and which side of which neighbor it was on, and saves that inside the layout (`tinkrPlaces`). Reopening tries a tab-mate, then the side, then the panel's default location.
+- **Sizes with a gap** (`src/layout/gap.ts`): dockview-core 8.10 saves each card's size without its share of the gap but reads it back as if included, so panels moved by about a pixel on every restore. `snapshot()` adds the share back.
+- **Saved layouts** are copied through JSON before dockview loads them, because the store hands over Vue's reactive objects (`structuredClone` refuses those). Layouts from before this milestone load; their `pinned` tab component is dropped.
+- **Dragging a tab onto the rail** works through dockview's `getPanelData()`; the rail only accepts its panel drags.
+- **Title bar:** `data-tauri-drag-region="deep"` makes everything that isn't a button drag the window. `tauri.macos.conf.json` keeps macOS's own window buttons (overlay title bar). Because Tauri merges config arrays by replacing them, that file and `tauri.unfocused.conf.json` repeat the whole window entry.
+- **Themes:** `--tk-window` is now the darker color around the cards; a theme that sets only `bg` gets a window color derived from it. A theme's CSS that styled `.statusbar` no longer matches anything.
+- **Tests:** unit tests for icons, closed panels' places, chat date groups, the rail, restoring and hiding in the dock, and the gap sizes. The e2e checks for layout, plugins, appearance, terminal and editor pass on Windows; `editor.e2e.ts` includes one short Claude turn, and it last ran before the final small interface fixes. A last change to how the layout and appearance scripts wait for settings is typechecked but not run.
+- **Not checked yet:** dragging the window by the title bar, double-click to maximize and the three window buttons (the e2e can't use the real mouse); dragging a tab onto the rail with a real mouse (the check dispatches the drag events in the page); Windows 11's snap-layout flyout on the maximize button, which a custom button is not expected to get without native code; macOS and Linux; the paid chat, history and review checks.
+
 ## Milestone 8 notes
 Themes and backgrounds.
 
@@ -247,7 +305,7 @@ The plugin system; the built-in panels moved onto it.
 - **New panels:** Console (plugin logs and errors, "Ask Claude to fix") and Plugins (state, turn on/off, reload, open the folder). Status bar buttons open them; the Console button lights up while there are errors.
 - **Example:** `examples/plugins/word-count` (panel, selection action, command with keybinding, settings, a relative import, agent).
 - **Fixed along the way:** spreading a permission-guarded object read every property, so with a throwing proxy every plugin without `fs` failed to load (caught by the unit tests; now plain functions that throw when called). Built-in panels didn't fill their panel once they were separate Vue apps (`tk-fill`). In e2e scripts, a `\r` inside `Input.insertText` doesn't press Enter.
-- **Not done yet:** layouts are still in localStorage (settings.json is ready for them); a plugin's settings have no UI; `api.git` waits for Milestone 10; themes are Milestone 8.
+- **Not done yet:** layouts are still in localStorage (settings.json is ready for them); a plugin's settings have no UI; `api.git` waits for Milestone 11; themes are Milestone 8.
 - **Tests:** unit tests for the loader (approval asked once and remembered, deferred at startup, refusals, load errors undone, bad manifests, half-written folders, hot reload with one reload per burst, panels kept or removed, deleted folders, built-ins), the API (prefixes, duplicates, disposal, permissions, file access limits, settings, panel mount/visibility/cleanup, a throwing mount) and keybindings/URLs; Rust tests for the path rules. `e2e/plugins.e2e.ts` (free) writes real plugins into the plugins folder and covers the palette, loading, buttons in every slot, keybindings, settings, hot reload of an imported file, the error/Console/"Ask Claude to fix" path, recovery, permissions, a plugin left off, and deleting one; it removes them and their settings afterwards.
 
 ## Milestone 6 notes

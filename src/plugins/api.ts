@@ -72,7 +72,18 @@ export interface PanelDefinition {
   title: string
   /** Default "right". */
   location?: PanelLocation
-  /** Whether the tab has a close button. Default true. */
+  /**
+   * The panel's icon in the rail and the panel list: SVG path data on a 24x24 grid
+   * ("M4 6h16M4 12h16", drawn as lines), or the path of an .svg file in the plugin's
+   * folder (its own colors are ignored). Both take the theme's text color. Without
+   * one, the title's first letter is shown.
+   */
+  icon?: string
+  /** False = the rail icon is dimmed: the panel has nothing to show. Read on every redraw, so keep it cheap. */
+  isEnabled?(): boolean
+  /** True = a dot on the rail icon: something wants a look. Read on every redraw, so keep it cheap. */
+  badge?(): boolean
+  /** No longer used: since the interface refresh, every panel can be closed from its menu. */
   closable?: boolean
   /**
    * Build the panel's content in `el`, with any framework or none. Called once per
@@ -100,8 +111,10 @@ export interface CommandDefinition {
 
 /**
  * Where an action's button appears.
- * - "titlebar", "statusbar": the window's top and bottom bars.
- * - "chat-toolbar": the row under the message box.
+ * - "titlebar": an icon button in the title bar, beside the layout menu.
+ * - "statusbar": an icon button at the bottom of the rail (in the title bar while the
+ *   rail is collapsed). The name is from the status bar Tinkr used to have.
+ * - "chat-toolbar": an icon button in the message box.
  * - "selection": the menu for selected code (popup, right-click). Its `run` gets the selection.
  */
 export type ActionSlot = 'titlebar' | 'statusbar' | 'chat-toolbar' | 'selection'
@@ -120,10 +133,12 @@ export interface ActionDefinition {
   /** Unique within the plugin. */
   id: string
   slot: ActionSlot
-  /** The button's label. */
+  /** The button's name (read by screen readers, and the tooltip if there's no `tooltip`). */
   title: string
   /** Tooltip. */
   tooltip?: string
+  /** The button's icon, like `PanelDefinition.icon`. Without one, the title's first letter. */
+  icon?: string
   /** Lower comes first (default 100). */
   order?: number
   run(selection?: SelectionInfo): unknown

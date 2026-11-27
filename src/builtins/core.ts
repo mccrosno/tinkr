@@ -1,6 +1,5 @@
-// The "core" built-in plugin: Tinkr's own commands and shortcuts, the titlebar and
-// statusbar buttons, and keeping the editor and terminal panels in step with their
-// stores. Registered through the plugin API like everything else, so a plugin can call
+// The "core" built-in plugin: Tinkr's own commands and shortcuts, and keeping the
+// editor and terminal panels in step with their stores. Registered through the plugin API like everything else, so a plugin can call
 // any of these commands (e.g. api.commands.execute('workspace.openFolder', path)).
 
 import { computed, watch } from 'vue'
@@ -14,6 +13,7 @@ import { useChat } from '../stores/chat'
 import { useEditor } from '../stores/editor'
 import { useLayout } from '../stores/layout'
 import { usePlugins } from '../stores/plugins'
+import { useRail } from '../stores/rail'
 import { useTerminal } from '../stores/terminal'
 import { useWorkspace } from '../stores/workspace'
 
@@ -24,8 +24,8 @@ function activate(api: TinkrApi) {
   const terminal = useTerminal()
   const ws = useWorkspace()
   const plugins = usePlugins()
+  const rail = useRail()
   const command = api.commands.register
-  const action = api.actions.register
 
   // --- Keeping the dock and the stores in agreement ------------------------------
   // The editor and terminal stores say whether they want to be seen (a file was opened,
@@ -33,8 +33,24 @@ function activate(api: TinkrApi) {
   // closing a panel's tab in the dock tells the store it's hidden.
   const editorWanted = computed(() => editor.panelOpen && editor.tabs.length > 0)
   const terminalWanted = computed(() => terminal.visible && terminal.tabs.length > 0)
-  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.hide('editor')))
-  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.hide('terminal')))
+  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.putAway('editor')))
+  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.putAway('terminal')))
+  // Brought on screen from the dock (the rail, the panel list): the stores follow, and
+  // a terminal with no shell yet starts one.
+  watch(
+    () => layout.shown.editor,
+    (on) => {
+      if (on && editor.tabs.length) editor.panelOpen = true
+    },
+  )
+  watch(
+    () => layout.shown.terminal,
+    (on) => {
+      if (!on || !ws.root) return
+      if (terminal.tabs.length) terminal.visible = true
+      else terminal.create(ws.root)
+    },
+  )
   watch(
     () => layout.visible.editor,
     (on) => {
@@ -50,10 +66,16 @@ function activate(api: TinkrApi) {
   // After a preset is laid out: it may show an editor or terminal that has nothing to show.
   layout.onApplied(() => {
     if (editorWanted.value) layout.show('editor', { activate: false })
-    else layout.hide('editor')
+    else layout.putAway('editor')
     if (terminalWanted.value) layout.show('terminal', { activate: false })
-    else layout.hide('terminal')
+    else layout.putAway('terminal')
   })
+  // "Ask Claude", a file added or a plugin filling the message box: the chat must be on
+  // screen, even if it was closed.
+  watch(
+    () => chat.focusRequests,
+    () => layout.show('chat'),
+  )
   // The chat works in the open folder; switching folders starts a new conversation.
   watch(
     () => ws.root,
@@ -65,22 +87,38 @@ function activate(api: TinkrApi) {
   // --- Commands -----------------------------------------------------------------
   command({ id: 'workspace.openFolder', title: 'Open folder…', keybinding: 'Ctrl+O', run: (path) => openFolder(typeof path === 'string' ? path : undefined) })
   command({ id: 'workspace.closeFolder', title: 'Close folder', run: () => closeFolder() })
-  command({ id: 'chat.new', title: 'New chat', keybinding: 'Ctrl+N', run: () => chat.newChat() })
+  command({
+    id: 'chat.new',
+    title: 'New chat',
+    keybinding: 'Ctrl+N',
+    run: () => {
+      chat.newChat()
+      layout.show('chat')
+    },
+  })
+  command({
+    id: 'chat.open',
+    title: 'Open a chat',
+    hidden: true,
+    run: (id) => {
+      layout.show('chat')
+      return chat.openChat(String(id))
+    },
+  })
   command({ id: 'chat.openIn', title: 'Open a chat in its folder', hidden: true, run: (folder, id) => openChatIn(folder as string | null, id as string) })
   command({
     id: 'layout.toggleSidebar',
     title: 'Show or hide Chats and Files',
     keybinding: 'Ctrl+B',
     run() {
-      if (sidebarShown()) {
-        layout.hide('chats')
-        layout.hide('files')
-      } else {
+      if (sidebarShown()) layout.retract('chats', 'files')
+      else {
         layout.show('files', { activate: false })
         layout.show('chats', { activate: false })
       }
     },
   })
+  command({ id: 'view.toggleRail', title: 'Show or hide the side bar', keybinding: 'Ctrl+Shift+B', run: () => rail.toggleCollapsed() })
   command({
     id: 'editor.toggle',
     title: 'Show or hide the editor',
@@ -148,59 +186,6 @@ function activate(api: TinkrApi) {
       const dir = pluginsDir()
       if (dir) await revealItemInDir(dir)
     },
-  })
-
-  // --- Titlebar and statusbar buttons -------------------------------------------
-  const run = (id: string) => () => api.commands.execute(id)
-  action({ id: 'openFolder', slot: 'titlebar', order: 10, title: 'Open folder…', tooltip: 'Open folder (Ctrl+O)', run: run('workspace.openFolder') })
-  action({
-    id: 'sidebar',
-    slot: 'titlebar',
-    order: 20,
-    title: 'Sidebar',
-    tooltip: 'Show or hide Chats and Files (Ctrl+B)',
-    run: run('layout.toggleSidebar'),
-    isActive: sidebarShown,
-  })
-  action({
-    id: 'editor',
-    slot: 'titlebar',
-    order: 30,
-    title: 'Editor',
-    tooltip: 'Show or hide the editor (Ctrl+Shift+E)',
-    run: run('editor.toggle'),
-    isActive: () => editorWanted.value,
-    isEnabled: () => editor.tabs.length > 0,
-  })
-  action({
-    id: 'terminal',
-    slot: 'titlebar',
-    order: 40,
-    title: 'Terminal',
-    tooltip: 'Show or hide the terminal (Ctrl+`)',
-    run: run('terminal.toggle'),
-    isActive: () => terminalWanted.value,
-    isVisible: () => !!ws.root,
-  })
-  action({
-    id: 'newChat',
-    slot: 'titlebar',
-    order: 90,
-    title: 'New chat',
-    tooltip: 'New chat (Ctrl+N)',
-    run: run('chat.new'),
-    isEnabled: () => !chat.busy && chat.messages.length > 0,
-  })
-  action({ id: 'plugins', slot: 'statusbar', order: 10, title: 'Plugins', tooltip: 'Installed plugins', run: run('view.plugins') })
-  action({
-    id: 'console',
-    slot: 'statusbar',
-    order: 20,
-    title: 'Console',
-    tooltip: 'Plugin messages and errors',
-    run: run('view.console'),
-    // Lit up while there are errors to look at.
-    isActive: () => plugins.log.some((l) => l.level === 'error'),
   })
 }
 

@@ -130,7 +130,7 @@ export class Agent {
 
     let sessionId: string | null = resumeSessionId
     const cliPath = this.cliPath()
-    if (!cliPath) return finish('error', { message: 'Claude Code CLI is not available. Check the status bar.' })
+    if (!cliPath) return finish('error', { message: 'Claude Code CLI is not available. Check the agent status dot.' })
     if (this.running.has(turnId)) return finish('error', { message: `turn ${turnId} is already running` })
 
     let content: ContentBlock[]

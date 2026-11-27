@@ -58,7 +58,7 @@ function write(name: string, files: Record<string, string>) {
 const SAMPLE_INDEX = `import { message } from './lib/message.js'
 export function activate(api) {
   api.panels.register({
-    id: 'main', title: 'Sample', location: 'right',
+    id: 'main', title: 'Sample', location: 'right', icon: 'M4 6h16M4 12h16',
     mount(el, ctx) {
       el.innerHTML = '<p class="sample-text"></p><p class="sample-visible"></p>'
       el.querySelector('.sample-text').textContent = message
@@ -84,9 +84,9 @@ try {
   await until('built-ins loaded', `!!window.__tinkr && ${plugins}?.record('core')?.state === 'active' && !!document.querySelector('[data-panel=chat] .chat')`, 30_000)
   const builtIns = await js<string[]>(`${plugins}.plugins.filter(p => p.builtIn && p.state === 'active').map(p => p.name)`)
   for (const n of ['core', 'chat', 'files', 'editor', 'terminal', 'console', 'plugins']) if (!builtIns.includes(n)) throw new Error('built-in not active: ' + n)
-  if (!(await js<boolean>(`!!document.querySelector('[data-panel=chat] .chat textarea') && !!document.querySelector('.titlebar [data-action=openFolder]')`)))
+  if (!(await js<boolean>(`!!document.querySelector('[data-panel=chat] .chat textarea') && !!document.querySelector('.titlebar [data-testid=command-search]')`)))
     throw new Error('built-in panel or button missing')
-  pass(`built-ins run as plugins (${builtIns.length}); the chat panel and titlebar buttons come from them`)
+  pass(`built-ins run as plugins (${builtIns.length}); the chat panel comes from them`)
 
   // 2. The command palette lists commands and runs the chosen one.
   await key('P', 'KeyP', 80, CTRL | SHIFT)
@@ -107,7 +107,7 @@ try {
   await js(`${store('layout')}.show('${SAMPLE}.main')`)
   await until('panel content', `document.querySelector('[data-panel="${SAMPLE}.main"] .sample-text')?.textContent === 'sample v1'`)
   await until('told it is visible', `document.querySelector('[data-panel="${SAMPLE}.main"] .sample-visible')?.textContent === 'visible'`)
-  for (const sel of ['.titlebar [data-action="e2e-sample.top"]', '.statusbar [data-action="e2e-sample.bottom"]', '.composer [data-action="e2e-sample.composer"]'])
+  for (const sel of ['.titlebar [data-action="e2e-sample.top"]', ':is(.rail, .titlebar) [data-action="e2e-sample.bottom"]', '.composer [data-action="e2e-sample.composer"]'])
     if (!(await js<boolean>(`!!document.querySelector(${JSON.stringify(sel)})`))) throw new Error('missing button ' + sel)
   pass('a plugin on disk loads (relative import works); its panel, titlebar, statusbar and composer buttons appear')
 

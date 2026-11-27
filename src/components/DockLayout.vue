@@ -1,22 +1,33 @@
 <script setup lang="ts">
-// The docking area (dockview): every panel is a tab you can drag to split or stack it.
-// This component only provides the dock itself: a PanelHost per panel (where the
-// panel's content is moved in), a tab without a close button for the chat, and Tinkr's
-// colors. Panels come from the plugin registry; presets from the layout store.
+// The docking area (dockview): every panel is a tab you can drag to split or stack it,
+// and every group of tabs is a rounded card. This component provides the dock itself:
+// a PanelHost per panel (where the panel's content is moved in), the tab pills, the
+// header menu, Tinkr's colors, and the message shown when nothing is on screen.
+// Panels come from the plugin registry; presets from the layout store.
 import { watch } from 'vue'
 import { DockviewVue, type DockviewApi, type DockviewReadyEvent, type DockviewTheme } from 'dockview-vue'
 import 'dockview-vue/dist/styles/dockview.css'
-import { BUILT_IN_PANELS, Dock } from '../layout/dock'
+import { BUILT_IN_PANELS, Dock, PANEL_GAP } from '../layout/dock'
 import { askAboutNewPlugins, pluginsReady } from '../plugins/boot'
 import { useLayout } from '../stores/layout'
 import { usePlugins } from '../stores/plugins'
+import EmptyDock from './EmptyDock.vue'
 import PanelHost from './PanelHost.vue'
+import PanelMenu from './PanelMenu.vue'
+import PanelTab from './PanelTab.vue'
 
 const layout = useLayout()
 const plugins = usePlugins()
 
 /** Dockview's colors come from CSS variables; `dockview-theme-tinkr` maps them to Tinkr's tokens (dock.css). */
-const theme: DockviewTheme = { name: 'tinkr', className: 'dockview-theme-tinkr' }
+const theme: DockviewTheme = {
+  name: 'tinkr',
+  className: 'dockview-theme-tinkr',
+  gap: PANEL_GAP,
+  // The drop preview covers the whole card, header included.
+  dndOverlayMounting: 'absolute',
+  dndPanelOverlay: 'group',
+}
 
 async function onReady(e: DockviewReadyEvent) {
   // Dev only: the e2e scripts inspect the layout.
@@ -26,14 +37,14 @@ async function onReady(e: DockviewReadyEvent) {
   layout.attach(
     new Dock(e.api, (id) => {
       const p = plugins.panels.get(id)
-      return p && { title: p.title, closable: p.closable, location: p.location }
+      return p && { title: p.title, location: p.location }
     }),
   )
   keepTitles(e.api)
   await askAboutNewPlugins()
 }
 
-/** A panel's `ctx.setTitle` renames its tab. */
+/** A panel's `ctx.setTitle` renames its tab (dockview keeps the title for its saved layouts). */
 function keepTitles(api: DockviewApi) {
   watch(
     () => [...plugins.panels.values()].map((p) => [p.id, p.title] as const),
@@ -60,16 +71,18 @@ function keepTitles(api: DockviewApi) {
       <template v-for="id in BUILT_IN_PANELS" :key="id" #[`panel-${id}`]>
         <PanelHost :panel="id" />
       </template>
-      <!-- The chat's tab: a title, no close button (it's the main window). -->
-      <template #tab-pinned="props">
-        <div class="pinned-tab" :title="props.api?.title">{{ props.api?.title ?? props.params?.title }}</div>
+      <template #defaultTab="props">
+        <PanelTab :panel="props.api.id" :fallback="props.api.title" />
+      </template>
+      <template #rightHeaderActions="props">
+        <PanelMenu :group="props.group" />
       </template>
     </DockviewVue>
+    <EmptyDock v-if="layout.empty" />
   </div>
 </template>
 
 <style scoped>
-.dock { height: 100%; }
+.dock { position: relative; height: 100%; }
 .dock > :deep(*) { height: 100%; }
-.pinned-tab { display: flex; align-items: center; height: 100%; padding: 0 10px; white-space: nowrap; }
 </style>

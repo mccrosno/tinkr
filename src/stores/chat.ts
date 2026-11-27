@@ -125,6 +125,10 @@ export const useChat = defineStore('chat', () => {
   const openingChat = ref(false)
   /** Bumped when the folder changes, so a slow answer about the old folder is dropped. */
   let chatsGeneration = 0
+  /** The most recently used listed chat that belongs to the folder open now (or has none, if none is open). */
+  const lastChat = computed(() =>
+    chats.value.filter((c) => isHere(c.folder)).reduce<ChatSummary | null>((a, b) => (a && a.lastModified >= b.lastModified ? a : b), null),
+  )
 
   /** Why sending is blocked right now, or null if it isn't. */
   const blocker = computed<string | null>(() => {
@@ -522,7 +526,7 @@ export const useChat = defineStore('chat', () => {
   return {
     connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log, projectRoot, draft, draftRefs, focusRequests,
     models, model, effort, modelOption, effortLevels, effectiveEffort, draftAttachments, attachError, chats, chatsError, openingChat,
-    allFolders, isHere,
+    allFolders, isHere, lastChat,
     blocker, busy, canSend, pendingPermissions, streamingId,
     connect, send, stop, respondToPermission, addRef, removeRef, onFileEvent, newChat, setProject, restart, recheck,
     setModel, setEffort, addAttachments, removeAttachment, refreshChats, setAllFolders, openChat, renameChat, deleteChat,

@@ -52,8 +52,10 @@ export function themeVars(theme: ResolvedTheme, base: (name: string) => string, 
     vars[tokenName(name)] = value.trim()
   }
   // The opaque colors follow the theme's own bg/surface unless it sets them itself:
-  // the window under everything, and menus/popups.
-  if (vars['--tk-bg']) vars['--tk-window'] ??= vars['--tk-bg']
+  // the window around the panel cards (darker than bg, so the cards stand out), and
+  // menus/popups.
+  const darken = theme.kind === 'light' ? 93 : 65
+  if (vars['--tk-bg']) vars['--tk-window'] ??= `color-mix(in srgb, ${vars['--tk-bg']} ${darken}%, black)`
   if (vars['--tk-surface']) vars['--tk-popup'] ??= vars['--tk-surface']
 
   const t = theme.background ? clamp(theme.translucency, 0, MAX_TRANSLUCENCY) : 0

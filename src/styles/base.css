@@ -24,6 +24,21 @@ code, pre, kbd { font-family: var(--tk-font-mono); font-size: 0.92em; }
 .tk-button.primary { background: var(--tk-accent); border-color: var(--tk-accent); color: var(--tk-on-accent); }
 .tk-button.primary:hover:not(:disabled) { background: var(--tk-accent-hover); }
 
+/* A borderless square button holding one icon (title bar, rail, panel headers, message box). */
+.tk-icon-button { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--tk-text-muted); }
+.tk-icon-button:hover:not(:disabled) { background: var(--tk-surface-2); color: var(--tk-text); }
+.tk-icon-button[aria-pressed='true'] { background: var(--tk-surface-2); color: var(--tk-text); }
+.tk-icon-button[aria-disabled='true'] { opacity: 0.4; cursor: default; }
+.tk-icon-button[aria-disabled='true']:hover { background: none; color: var(--tk-text-muted); }
+
+/* Menus and popups: opaque, whatever a theme does to the panels. */
+.tk-menu { min-width: 200px; padding: 5px; background: var(--tk-popup); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-card); box-shadow: var(--tk-shadow); font-size: 13px; }
+.tk-menu-title { padding: 3px 10px; font-size: 11px; color: var(--tk-text-muted); }
+.tk-menu-item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 24px; padding: 4px 10px; border: 0; border-radius: var(--tk-radius-sm); background: none; text-align: left; white-space: nowrap; }
+.tk-menu-item:hover:not(:disabled), .tk-menu-item:focus-visible { background: var(--tk-surface-2); outline: none; }
+.tk-menu-item kbd { color: var(--tk-text-muted); font-size: 11.5px; }
+.tk-menu-sep { height: 1px; margin: 4px 6px; background: var(--tk-border); }
+
 /* A panel's content box (the element a panel's `mount` receives) is a flex column that
    fills the panel; `tk-fill` on a child makes it take the rest of the space. */
 .tk-panel-root { flex: 1; min-height: 0; display: flex; flex-direction: column; }

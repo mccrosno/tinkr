@@ -30,7 +30,7 @@ async function until(label: string, expr: string, timeoutMs = 90_000) {
 async function sendViaUi(message: string) {
   await js(`(() => { const t = document.querySelector('textarea[aria-label=Message]'); t.value = ${JSON.stringify(message)}; t.dispatchEvent(new Event('input')); })()`)
   await sleep(50)
-  await js(`[...document.querySelectorAll('.composer button')].find(b => b.textContent.trim() === 'Send').click()`)
+  await js(`document.querySelector('.composer [data-testid=send]').click()`)
 }
 const lastReply = () => js<string>(`[...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? ''`)
 /** Set a <select> the way a user would: pick the value, fire `change`. */
@@ -111,7 +111,7 @@ if (!(await js<boolean>(`document.querySelector('.chats li[data-session="${sessi
 pass(`the chat appears in the history list as "${title.slice(0, 50)}"`)
 
 // 5. New chat, then reopen it from the list: messages and the image come back, and it continues.
-await js(`document.querySelector('.chats .header button').click()`) // "New"
+await js(`document.querySelector('.chats [data-testid=new-chat]').click()`)
 await until('new chat', `${chat}.messages.length === 0 && ${chat}.sessionId === null`, 2000)
 await js(`document.querySelector('.chats li[data-session="${sessionId}"] .open').click()`)
 await until('reopened', `${chat}.sessionId === '${sessionId}' && ${chat}.messages.length >= 2`, 15_000)
@@ -156,7 +156,7 @@ console.log(`  ${total} chats in ${folders} folders; opened one from ${elsewhere
 pass('all folders lists every folder; a chat of another folder opens that folder and the chat')
 await js(`${ws}.closeFolder()`)
 await until('folder closed again', `${chat}.projectRoot === null`, 5000)
-await js(`document.querySelector('[data-testid=all-folders]').click()`)
+await js(`document.querySelector('[data-testid=this-folder]').click()`)
 await until('one folder again', `!${chat}.allFolders`, 2000)
 
 console.log(`\n${results.length} checks passed`)

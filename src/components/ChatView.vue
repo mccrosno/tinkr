@@ -5,7 +5,9 @@ import { useEditor } from '../stores/editor'
 import { useWorkspace } from '../stores/workspace'
 import { joinPath } from '../workspace/fs'
 import type { EffortLevel } from '../agent/types'
+import { UI_ICONS } from '../builtins/icons'
 import ActionSlot from './ActionSlot.vue'
+import AppIcon from './AppIcon.vue'
 import AttachmentChip from './AttachmentChip.vue'
 import ChangesBar from './ChangesBar.vue'
 import MessageBody from './MessageBody.vue'
@@ -62,6 +64,8 @@ function modelName(id: string | undefined) {
   const m = chat.models.find((x) => x.resolvedModel === id && x.value !== 'default') ?? chat.models.find((x) => x.value === id)
   return m?.displayName ?? id
 }
+
+const canSubmit = computed(() => chat.canSend && !!(chat.draft.trim() || chat.draftRefs.length || chat.draftAttachments.length))
 
 async function submit() {
   if (await chat.send(chat.draft)) chat.draft = ''
@@ -175,7 +179,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
 
     <ChangesBar />
     <form class="composer" @submit.prevent="submit">
-      <div class="column box">
+      <div class="box">
         <div v-if="chat.draftRefs.length" class="refs" data-testid="draft-refs">
           <RefChip v-for="(r, i) in chat.draftRefs" :key="`${r.path}:${r.fromLine}-${r.toLine}`" :ref-data="r" removable @remove="chat.removeRef(i)" />
         </div>
@@ -186,7 +190,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
         <textarea
           ref="input"
           v-model="chat.draft"
-          rows="3"
+          rows="2"
           :placeholder="placeholder"
           :disabled="!!chat.blocker"
           aria-label="Message"
@@ -195,8 +199,16 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
         />
         <div class="row">
           <input ref="filePicker" type="file" multiple hidden data-testid="file-picker" @change="onPicked" />
-          <button type="button" class="tk-button" title="Attach images, PDFs or text files" :disabled="!!chat.blocker" @click="filePicker?.click()">
-            Attach
+          <button
+            type="button"
+            class="tk-icon-button"
+            aria-label="Attach files"
+            title="Attach images, PDFs or text files"
+            data-testid="attach"
+            :disabled="!!chat.blocker"
+            @click="filePicker?.click()"
+          >
+            <AppIcon :icon="{ path: UI_ICONS.attach }" />
           </button>
           <select
             v-if="chat.models.length"
@@ -210,7 +222,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
           </select>
           <select
             v-if="chat.effortLevels.length"
-            class="picker"
+            class="picker effort"
             aria-label="Effort"
             title="How much Claude thinks before answering"
             :value="chat.effectiveEffort ?? ''"
@@ -220,15 +232,12 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
             <option v-for="level in chat.effortLevels" :key="level" :value="level">{{ EFFORT_LABELS[level] }} effort</option>
           </select>
           <ActionSlot slot-name="chat-toolbar" />
-          <span class="hint">{{ chat.sessionId ? 'Continuing this chat' : 'New chat' }}</span>
-          <button v-if="chat.busy" type="button" class="tk-button" title="Stop (Esc)" @click="chat.stop()">Stop</button>
-          <button
-            v-else
-            type="submit"
-            class="tk-button primary"
-            :disabled="!chat.canSend || (!chat.draft.trim() && !chat.draftRefs.length && !chat.draftAttachments.length)"
-          >
-            Send
+          <span class="spacer" />
+          <button v-if="chat.busy" type="button" class="round" aria-label="Stop" title="Stop (Esc)" data-testid="stop" @click="chat.stop()">
+            <AppIcon :icon="{ path: UI_ICONS.stop }" :size="16" />
+          </button>
+          <button v-else type="submit" class="round" aria-label="Send" title="Send (Enter)" data-testid="send" :disabled="!canSubmit">
+            <AppIcon :icon="{ path: UI_ICONS.send }" :size="16" />
           </button>
         </div>
       </div>
@@ -239,8 +248,13 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
 <style scoped>
 .chat { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .drop-hint { position: absolute; inset: 8px; z-index: 5; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--tk-accent); border-radius: var(--tk-radius); background: var(--tk-surface); color: var(--tk-text); font-size: 15px; opacity: 0.92; pointer-events: none; }
-.picker { max-width: 160px; padding: 3px 6px; background: var(--tk-bg); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); color: var(--tk-text); font-size: 12.5px; }
-.picker:focus { border-color: var(--tk-accent); outline: none; }
+/* `field-sizing` makes each box as wide as its current choice, not its longest option. */
+.picker { min-width: 0; max-width: 220px; field-sizing: content; height: 28px; padding: 0 4px; background: transparent; border: 0; border-radius: 7px; color: var(--tk-text-muted); font-size: 12.5px; text-overflow: ellipsis; cursor: pointer; }
+/* In a narrow card the model's name is cut short first; the effort stays readable. */
+.picker.effort { flex: none; }
+.picker:hover { background: var(--tk-surface-2); color: var(--tk-text); }
+/* The open list is drawn by the system and would otherwise inherit the transparent box. */
+.picker option { background: var(--tk-popup); color: var(--tk-text); }
 .attach-error { margin: 0; color: var(--tk-danger); font-size: 12.5px; }
 .scroller { flex: 1; overflow-y: auto; }
 .column { max-width: 780px; margin: 0 auto; padding: 0 20px; }
@@ -265,10 +279,14 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
 .meta { margin-top: 4px; font-size: 12px; color: var(--tk-text-muted); }
 .error-box { background: var(--tk-danger-bg); color: var(--tk-danger); border-radius: var(--tk-radius-sm); padding: 8px 12px; white-space: pre-wrap; }
 .thinking { color: var(--tk-text-muted); font-style: italic; }
-.composer { border-top: 1px solid var(--tk-border); background: var(--tk-surface); padding: 12px 0; }
-.box { display: flex; flex-direction: column; gap: 6px; }
-textarea { width: 100%; resize: none; background: var(--tk-bg); border: 1px solid var(--tk-border); border-radius: var(--tk-radius); padding: 8px 10px; }
-textarea:focus { border-color: var(--tk-accent); outline: none; }
-.row { display: flex; align-items: center; gap: 8px; }
-.hint { flex: 1; font-size: 12px; color: var(--tk-text-muted); }
+.composer { padding: 0 12px 12px; }
+.box { display: flex; flex-direction: column; gap: 6px; max-width: 720px; margin: 0 auto; padding: 8px 8px 8px 10px; background: var(--tk-surface); border: 1px solid var(--tk-border); border-radius: 14px; }
+.box:focus-within { border-color: var(--tk-accent); }
+/* Two lines, growing with the text where the webview supports `field-sizing`. */
+textarea { width: 100%; max-height: 40vh; resize: none; field-sizing: content; background: transparent; border: 0; outline: none; padding: 2px 2px 0; }
+.row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.spacer { flex: 1; }
+.round { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--tk-accent); color: var(--tk-on-accent); }
+.round:hover:not(:disabled) { background: var(--tk-accent-hover); }
+.round:disabled { background: var(--tk-surface-2); color: var(--tk-text-muted); }
 </style>

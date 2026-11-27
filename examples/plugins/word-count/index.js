@@ -18,6 +18,8 @@ export function activate(api) {
     id: 'panel',
     title: 'Word count',
     location: 'right',
+    // SVG path data on a 24x24 grid; the path of an .svg file in this folder works too.
+    icon: 'M4 6h16M4 12h16M4 18h9',
     mount(el) {
       el.style.padding = '12px'
       el.innerHTML = `

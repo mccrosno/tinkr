@@ -21,8 +21,10 @@ describe('themeVars', () => {
 
   test("the window and popup colors follow the theme's bg and surface", () => {
     const { vars } = themeVars(theme({ tokens: { bg: '#123456', surface: '#abcdef' } }), base, false)
-    expect(vars['--tk-window']).toBe('#123456')
+    expect(vars['--tk-window']).toBe('color-mix(in srgb, #123456 65%, black)') // darker, around the cards
     expect(vars['--tk-popup']).toBe('#abcdef')
+    expect(themeVars(theme({ kind: 'light', tokens: { bg: '#ffffff' } }), base, false).vars['--tk-window']).toBe('color-mix(in srgb, #ffffff 93%, black)')
+    expect(themeVars(theme({ tokens: { bg: '#123456', window: '#000000' } }), base, false).vars['--tk-window']).toBe('#000000')
   })
 
   test('see-through panels only with a background; overridden colors are the ones mixed', () => {

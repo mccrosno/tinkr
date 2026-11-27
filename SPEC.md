@@ -68,7 +68,7 @@ Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel
 
 ### Panels
 - Every dock group is a rounded card with a small gap around it (dockview's theme `gap`). Its tab bar is restyled as the card's header: tabs are pills, so a single tab reads as a title.
-- Docking works as before: drag a tab to split a group (left, right, up, down), stack it as a tab, or drop it on an outer edge of the dock; drag the gaps to resize. A panel menu in the header does the same without dragging, and pins, unpins or closes the panel.
+- Docking works as before: drag a tab to split a group (left, right, up, down), stack it as a tab, or drop it on an outer edge of the dock; drag the gaps to resize. A panel menu in the header splits and moves to an edge without dragging, and pins, unpins or closes the panel.
 - Every panel can be closed from that menu, the chat included. Closing the chat panel doesn't end the conversation: the draft and a running reply are there when it comes back. "New chat" (Ctrl+N) and opening a chat from the list show the panel again.
 
 ### Empty dock
@@ -79,6 +79,7 @@ Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel
 ### Rail
 - A narrow strip left of the dock, not itself a dock panel, holding the pinned panels' icons. Any panel can be pinned: drag its tab onto the rail, or use the panel menu or the "+" list. A pin is a shortcut; the panel itself can be anywhere in the dock.
 - Clicking an icon shows the panel where it is (a closed one comes back to its last place, or its default location). Clicking the icon of a panel already on screen hides its group and keeps its place. This replaces the Milestone 6 rules that kept the chat from being closed or hidden.
+- Ctrl+Shift+E and Ctrl+` (and closing the last editor tab or terminal) hide the panel's group too, if the panel is the tab in front. A group shared with the chat stays, and only that panel is closed. A background tab is left alone. Ctrl+B hides the group of Chats and Files only if nothing else is on it; otherwise it closes just those two.
 - "+" lists every registered panel with its state and a pin toggle. A newly registered plugin panel appears there and isn't pinned until the user pins it.
 - Pinned by default: Chat, Chats, Files, Editor, Terminal, Console. Pins are saved in `settings.json` and are the same in every layout preset.
 - Editor and Terminal icons are dimmed while there's nothing to show (no open file; no open folder). The Console icon gets a badge while there are errors.
@@ -98,12 +99,6 @@ Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel
 - `PanelDefinition` and `ActionDefinition` get an optional `icon`; without one, the first letter of the title is shown. Additive, so the API stays version 1.
 - An icon is either SVG path data on a 24×24 grid (drawn as a line icon), or the path of an `.svg` file in the plugin's folder (used as a mask, so its own colors are ignored). Both are drawn in the theme's text color. Decided 2026-11-27.
 - `PanelDefinition` also gets optional `isEnabled()` (false = the rail icon is dimmed because there's nothing to show) and `badge()` (true = a dot on the icon). The built-in Editor, Terminal, Console and Chat panels use them, the same way a plugin can.
-
-### To check while building
-- Dragging a dockview tab onto the rail (outside the dock).
-- Theme translucency and blur on the cards (the `tk-glass` selectors name the titlebar and status bar today).
-- Colors stay CSS tokens, in both the dark and light sets.
-- The e2e checks that use today's titlebar buttons, layout menu and status bar need updating.
 
 ## Plugin system (core of the project)
 Location: `~/.config/tinkr/plugins/<name>/` with `plugin.json` and an ES module entry.
@@ -148,7 +143,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 6. Docking layout + saved layouts ("Agent" chat-first default, "Editor"). **Done** (see "Milestone 6 notes" below).
 7. Plugin loader, slots, hot reload (move built-ins onto the plugin API). **Done** (see "Milestone 7 notes" below).
 8. Themes and backgrounds. **Done** (see "Milestone 8 notes" below).
-9. Interface refresh: combined title bar, floating panel cards, a collapsible pinned-panel rail (see "Interface").
+9. Interface refresh: combined title bar, floating panel cards, a collapsible pinned-panel rail (see "Interface"). **Built** (see "Milestone 9 notes" below); the title bar's window behaviour still needs checking by hand.
 10. In-app plugin authoring by Claude.
 11. Git install for plugins.
 
@@ -269,6 +264,19 @@ What shipped, and decisions made along the way:
 - **Focus fix:** the chat used to move focus to its input whenever a reply ended, even if the user had moved to the editor or terminal. It now does so only if focus was still in the chat.
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
+
+## Milestone 9 notes
+The interface refresh.
+
+- **Removed:** the status bar, and the built-in title bar buttons (Open folder, Sidebar, Editor, Terminal, New chat, Plugins, Console, Theme). Each is still reachable by a shortcut, a rail icon, a menu or the command palette. `PanelDefinition.closable` is ignored: every panel can be closed.
+- **Closed panels' places** (`src/layout/places.ts`): dockview forgets a closed panel, so the dock records its tab-mates and which side of which neighbor it was on, and saves that inside the layout (`tinkrPlaces`). Reopening tries a tab-mate, then the side, then the panel's default location.
+- **Sizes with a gap** (`src/layout/gap.ts`): dockview-core 8.10 saves each card's size without its share of the gap but reads it back as if included, so panels moved by about a pixel on every restore. `snapshot()` adds the share back.
+- **Saved layouts** are copied through JSON before dockview loads them, because the store hands over Vue's reactive objects (`structuredClone` refuses those). Layouts from before this milestone load; their `pinned` tab component is dropped.
+- **Dragging a tab onto the rail** works through dockview's `getPanelData()`; the rail only accepts its panel drags.
+- **Title bar:** `data-tauri-drag-region="deep"` makes everything that isn't a button drag the window. `tauri.macos.conf.json` keeps macOS's own window buttons (overlay title bar). Because Tauri merges config arrays by replacing them, that file and `tauri.unfocused.conf.json` repeat the whole window entry.
+- **Themes:** `--tk-window` is now the darker color around the cards; a theme that sets only `bg` gets a window color derived from it. A theme's CSS that styled `.statusbar` no longer matches anything.
+- **Tests:** unit tests for icons, closed panels' places, chat date groups, the rail, restoring and hiding in the dock, and the gap sizes. The free e2e checks (layout, plugins, appearance, terminal, editor) pass on Windows. `editor.e2e.ts` includes one short Claude turn.
+- **Not checked yet:** dragging the window by the title bar, double-click to maximize and the three window buttons (the e2e can't use the real mouse); dragging a tab onto the rail with a real mouse (the check dispatches the drag events in the page); Windows 11's snap-layout flyout on the maximize button, which a custom button is not expected to get without native code; macOS and Linux; the paid chat, history and review checks.
 
 ## Milestone 8 notes
 Themes and backgrounds.

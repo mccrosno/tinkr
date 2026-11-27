@@ -4,7 +4,7 @@ A modular, agentic code editor. Think Claude Desktop and VSCode in one window, b
 
 Tinkr ships with a minimal core. Everything else, including the editor, chat, file tree, terminal, and diff review, is a plugin. Claude can write new plugins for you while the app is running.
 
-> **Status:** Milestone 8 of 11. Themes: pick one in the Appearance panel (including see-through panels over animated backgrounds), or add your own as a plugin, even as plain JSON. Everything in the window is a plugin, including the built-in panels, and plugins you drop into `~/.config/tinkr/plugins` load and hot-reload while Tinkr runs. Panels dock anywhere: drag a tab to split or stack it, switch between the chat-first "Agent" layout and a classic "Editor" layout (Ctrl+Alt+1/2), or save your own. A chat-first app that works as a Claude Desktop replacement: past chats in the sidebar (reopen, continue, rename, delete), including the ones you started in the Claude Code CLI or Claude Desktop's Code tab, from every folder; chats with or without a project folder; images, PDFs and text files by paste, drop or the Attach button; and a model and effort picker. In a project folder, every edit Claude makes shows up as a diff you accept or reject chunk by chunk, and shell commands ask first. Select code and press Ctrl+L (or right-click) to ask Claude about it or request changes. There's a file tree, an editor that opens beside the chat when needed, and a terminal (Ctrl+`). Next: an interface refresh (floating panels, a rail of pinned panels, a combined title bar), then Claude writing plugins for you, inside Tinkr. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
+> **Status:** Milestone 9 of 11. A new interface: panels are floating cards you can close, split and rearrange, a collapsible side bar holds the ones you pin, and Tinkr draws its own title bar. Themes: pick one in the Appearance panel (including see-through panels over animated backgrounds), or add your own as a plugin, even as plain JSON. Everything in the window is a plugin, including the built-in panels, and plugins you drop into `~/.config/tinkr/plugins` load and hot-reload while Tinkr runs. Panels dock anywhere: drag a tab to split or stack it, switch between the chat-first "Agent" layout and a classic "Editor" layout (Ctrl+Alt+1/2), or save your own. A chat-first app that works as a Claude Desktop replacement: past chats in a list (reopen, continue, rename, delete), including the ones you started in the Claude Code CLI or Claude Desktop's Code tab, from every folder; chats with or without a project folder; images, PDFs and text files by paste, drop or the attach button; and a model and effort picker. In a project folder, every edit Claude makes shows up as a diff you accept or reject chunk by chunk, and shell commands ask first. Select code and press Ctrl+L (or right-click) to ask Claude about it or request changes. There's a file tree, an editor that opens beside the chat when needed, and a terminal (Ctrl+`). Next: Claude writing plugins for you, inside Tinkr. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
 
 ## Features (planned)
 
@@ -46,6 +46,7 @@ export function activate(api) {
     id: 'notes',
     title: 'Notes',
     location: 'right',
+    icon: 'M4 6h16M4 12h16M4 18h9', // SVG path data, or an .svg file in the plugin's folder
     mount(el, ctx) {
       el.textContent = 'Hello from a plugin' // any framework, or none
       return () => {} // cleanup
@@ -56,7 +57,7 @@ export function activate(api) {
 }
 ```
 
-Plugins add panels, commands (with keybindings, listed in the command palette, Ctrl+Shift+P), buttons in the titlebar, status bar, chat toolbar or the selection menu, and layout presets. The host API covers the open folder's files, the editor, Claude, the terminal, settings and notifications; see [`src/plugins/api.ts`](src/plugins/api.ts) for all of it, and [`examples/plugins/word-count`](examples/plugins/word-count) for a working example. Save a file and the plugin reloads; errors show in the Console panel, with a button to hand them to Claude.
+Plugins add panels, commands (with keybindings, listed in the command palette, Ctrl+Shift+P), buttons in the title bar, side bar, message box or the selection menu, and layout presets. The host API covers the open folder's files, the editor, Claude, the terminal, settings and notifications; see [`src/plugins/api.ts`](src/plugins/api.ts) for all of it, and [`examples/plugins/word-count`](examples/plugins/word-count) for a working example. Save a file and the plugin reloads; errors show in the Console panel, with a button to hand them to Claude.
 
 A theme can be a plugin with no code: list JSON files in `plugin.json` (`"themes": ["mytheme.json"]`), each with a `kind` (`dark` or `light`), the colors to change (`tokens`, e.g. `"accent": "#3fb0c9"`), and optionally a background picture (PNG, JPEG, WebP, GIF or SVG, animated ones too), how see-through the panels are over it, blur, and a CSS file. See [`examples/plugins/harbor-theme`](examples/plugins/harbor-theme).
 
@@ -72,7 +73,7 @@ Plugins are trusted code: they run inside Tinkr with access to your files, termi
 6. ✅ Docking layout + saved layout presets
 7. ✅ Plugin loader, slots, hot reload (built-ins are plugins too)
 8. ✅ Themes and backgrounds
-9. Interface refresh: floating panels, a collapsible rail of pinned panels, a combined title bar
+9. ✅ Interface refresh: floating panels, a collapsible rail of pinned panels, a combined title bar
 10. In-app plugin authoring by Claude
 11. Git install for plugins
 

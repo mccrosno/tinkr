@@ -5,6 +5,7 @@ import { useEditor } from '../stores/editor'
 import { useWorkspace } from '../stores/workspace'
 import { joinPath } from '../workspace/fs'
 import type { EffortLevel } from '../agent/types'
+import ActionSlot from './ActionSlot.vue'
 import AttachmentChip from './AttachmentChip.vue'
 import ChangesBar from './ChangesBar.vue'
 import MessageBody from './MessageBody.vue'
@@ -15,7 +16,6 @@ import SetupNotice from './SetupNotice.vue'
 const chat = useChat()
 const editor = useEditor()
 const ws = useWorkspace()
-const draft = ref('')
 const scroller = ref<HTMLElement>()
 const input = ref<HTMLTextAreaElement>()
 const root = ref<HTMLElement>()
@@ -64,7 +64,7 @@ function modelName(id: string | undefined) {
 }
 
 async function submit() {
-  if (await chat.send(draft.value)) draft.value = ''
+  if (await chat.send(chat.draft)) chat.draft = ''
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -185,7 +185,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
         <p v-if="chat.attachError" class="attach-error" role="alert">{{ chat.attachError }}</p>
         <textarea
           ref="input"
-          v-model="draft"
+          v-model="chat.draft"
           rows="3"
           :placeholder="placeholder"
           :disabled="!!chat.blocker"
@@ -219,13 +219,14 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
             <option value="">Default effort</option>
             <option v-for="level in chat.effortLevels" :key="level" :value="level">{{ EFFORT_LABELS[level] }} effort</option>
           </select>
+          <ActionSlot slot-name="chat-toolbar" />
           <span class="hint">{{ chat.sessionId ? 'Continuing this chat' : 'New chat' }}</span>
           <button v-if="chat.busy" type="button" class="tk-button" title="Stop (Esc)" @click="chat.stop()">Stop</button>
           <button
             v-else
             type="submit"
             class="tk-button primary"
-            :disabled="!chat.canSend || (!draft.trim() && !chat.draftRefs.length && !chat.draftAttachments.length)"
+            :disabled="!chat.canSend || (!chat.draft.trim() && !chat.draftRefs.length && !chat.draftAttachments.length)"
           >
             Send
           </button>

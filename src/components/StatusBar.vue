@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ActionSlot from './ActionSlot.vue'
 import { computed, ref } from 'vue'
 import { useChat } from '../stores/chat'
 
@@ -46,6 +47,7 @@ const tone = computed(() => {
     <span class="agent" data-testid="agent-status">{{ agentLabel }}</span>
     <span v-if="authLabel" class="auth" data-testid="auth-status">{{ authLabel }}</span>
     <span class="spacer" />
+    <ActionSlot slot-name="statusbar" small />
     <button class="link" :aria-expanded="showLog" @click="showLog = !showLog">Log</button>
     <button class="link" title="Restart the agent process" @click="chat.restart()">Restart agent</button>
     <pre v-if="showLog" class="log" data-testid="log">{{ chat.log.join('\n') || 'Nothing yet.' }}</pre>

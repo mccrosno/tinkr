@@ -82,8 +82,12 @@ export const useChat = defineStore('chat', () => {
   const log = ref<string[]>([])
   /** Folder the agent works in (Claude Code keeps sessions per folder). Null = a chat without a folder. */
   const projectRoot = ref<string | null>(null)
+  /** The text in the message box (kept here so plugins and "Ask Claude to fix" can fill it). */
+  const draft = ref('')
   /** Code references waiting in the composer, sent with the next message. */
   const draftRefs = ref<CodeRef[]>([])
+  /** Listeners for everything the agent reports (the plugin API's `agent.onDidReceive`). */
+  const eventListeners = new Set<(e: AgentEvent) => void>()
   /** Bumped to ask the chat view to focus its input (e.g. after "Ask Claude"). */
   const focusRequests = ref(0)
   /** Turns that already finished; a turn can finish before `send()` returns its id. */
@@ -166,6 +170,13 @@ export const useChat = defineStore('chat', () => {
 
   function handle(e: AgentEvent) {
     if ('turnId' in e && staleTurns.has(e.turnId)) return
+    for (const l of eventListeners) {
+      try {
+        l(e)
+      } catch {
+        /* a listener's bug must not break the chat */
+      }
+    }
     switch (e.type) {
       case 'connected':
         connection.value = 'connected'
@@ -448,6 +459,17 @@ export const useChat = defineStore('chat', () => {
     await refreshChats()
   }
 
+  /** Replace the message box's text and focus it (without sending). */
+  function setDraft(text: string) {
+    draft.value = text
+    focusRequests.value++
+  }
+
+  function onAgentEvent(listener: (e: AgentEvent) => void) {
+    eventListeners.add(listener)
+    return () => eventListeners.delete(listener)
+  }
+
   function onFileEvent(listener: (e: FileEvent) => void) {
     fileListeners.add(listener)
     return () => fileListeners.delete(listener)
@@ -498,11 +520,12 @@ export const useChat = defineStore('chat', () => {
   }
 
   return {
-    connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log, projectRoot, draftRefs, focusRequests,
+    connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log, projectRoot, draft, draftRefs, focusRequests,
     models, model, effort, modelOption, effortLevels, effectiveEffort, draftAttachments, attachError, chats, chatsError, openingChat,
     allFolders, isHere,
     blocker, busy, canSend, pendingPermissions, streamingId,
     connect, send, stop, respondToPermission, addRef, removeRef, onFileEvent, newChat, setProject, restart, recheck,
     setModel, setEffort, addAttachments, removeAttachment, refreshChats, setAllFolders, openChat, renameChat, deleteChat,
+    setDraft, onAgentEvent,
   }
 })

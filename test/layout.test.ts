@@ -38,6 +38,13 @@ class FakeDock implements DockHost {
     const p = this.panels.get(id)
     return !!p && !p.hidden
   }
+  remove(id: PanelId) {
+    this.panels.delete(id)
+    this.changed()
+  }
+  panelIds() {
+    return [...this.panels.keys()]
+  }
   snapshot() {
     return { panels: [...this.panels].map(([id, p]) => [id, p.hidden]), front: this.front }
   }

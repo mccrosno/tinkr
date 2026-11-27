@@ -10,7 +10,7 @@ Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude
 
 ## Current status
 
-Spikes in progress (see "Spike findings" in `SPEC.md`). Milestones 1 (chat), 2 (file tree + CodeMirror editor), 3 (terminal) and 4 (Claude edits files with review, "Ask Claude" selection menu, chat-first layout) are done. Next: Milestone 5 (Desktop-style chat: history, chats without a folder, attachments, model/effort picker). The milestone order changed after Milestone 3; see `SPEC.md`. All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
+Spikes in progress (see "Spike findings" in `SPEC.md`). Milestones 1 (chat), 2 (file tree + CodeMirror editor), 3 (terminal), 4 (Claude edits files with review, "Ask Claude" selection menu, chat-first layout) and 5 (Desktop-style chat: history, chats without a folder, attachments, model/effort picker) are done. Next: Milestone 6 (docking + saved layouts). The milestone order changed after Milestone 3; see `SPEC.md`. All four "First things to verify" spikes are done (see "Spike findings" in `SPEC.md`); `spikes/` is throwaway reference code. Tinkr uses the user's installed Claude Code CLI; it doesn't bundle one.
 
 WSL2: the author works on more than one Windows machine. Each one used so far has Ubuntu 24.04 (`wsl -d Ubuntu-24.04 -u root`) with Rust, Bun and the Tauri Linux prerequisites, run as root. A new machine may not: check `wsl -l` first. Build Linux copies in the WSL home folder (e.g. rsync to `~/tinkr`), not on `/mnt/c`.
 
@@ -73,23 +73,25 @@ Run from the repo root:
 | `bun run e2e` | Chat checks in the running app over CDP (see the header of `e2e/chat.e2e.ts` for how to launch it) |
 | `bun e2e/editor.e2e.ts` | File tree/editor checks in the running app (makes and removes a temp project) |
 | `bun e2e/terminal.e2e.ts` | Terminal checks in the running app (shell I/O, colors, resize, Ctrl+C, tabs, exit, kill) |
-| `bun e2e/review.e2e.ts` | Review checks with real Claude turns (diffs, chunk accept/reject, permission card, selection menu); about $0.60 |
+| `bun e2e/review.e2e.ts` | Review checks with real Claude turns (diffs, chunk accept/reject, permission card, selection menu); a few cents to $0.60 |
+| `bun e2e/history.e2e.ts` | Desktop-style chat checks with real Claude turns on Haiku (model/effort pickers, dropped and picked attachments, history list, reopen + continue, rename, delete, all folders); a few cents |
 | `bun sidecar/scripts/smoke.ts [exe]` | Live stdio test of the sidecar (source, or a compiled exe) |
 | `bun run build:sidecar` | Compile the sidecar to `src-tauri/binaries/` |
 | `bun run release` | Compile the sidecar and build installers (adds `externalBin` via `tauri.release.conf.json`) |
 | `bun run --cwd sidecar gen` | Regenerate `sdkVersion.generated.ts` after upgrading the Agent SDK (a test fails until you do) |
 
-`e2e`, `review.e2e.ts` and `smoke` use the real Claude Code login and cost money (cents for `e2e`/`smoke`, more for the review check). For Rust: `cargo build` / `cargo clippy` in `src-tauri/`.
+`e2e`, `review.e2e.ts`, `history.e2e.ts` and `smoke` use the real Claude Code login and cost money (cents, more for the review check). The e2e scripts drive the window the author may be using: ask before running them, and don't run them while the author is in the app. After changing sidecar code, restart the sidecar (status bar, or `chat.restart()` over CDP): Vite hot-reloads the UI, but the running sidecar keeps the old code. For Rust: `cargo build` / `cargo clippy` in `src-tauri/`.
 
 ## Layout
 
 - `shared/protocol.ts`: the only definition of sidecar messages. Change both sides together and bump `PROTOCOL_VERSION` on breaking changes.
-- `sidecar/src/`: `main.ts` (stdio loop), `agent.ts` (SDK turns, auth), `cli.ts` (find `claude`, version check).
+- `sidecar/src/`: `main.ts` (stdio loop), `agent.ts` (SDK turns, auth, model list), `cli.ts` (find `claude`, version check), `history.ts` (list/load/rename/delete stored chats, transcript -> chat rows), `attachments.ts` (files -> content blocks).
 - `src/agent/`: `types.ts` (`AgentProvider`), `claudeSidecar.ts` (Tauri events ↔ protocol). UI code uses only the provider via the `chat` store.
 - `src-tauri/src/sidecar.rs`: spawn/relay/restart. Rust never parses protocol lines.
 - `src-tauri/src/config.rs`: `config.json` (last/recent projects) and `open_project`, which adds the folder to the fs plugin scope. The webview can only touch opened folders; grant new fs commands in `capabilities/default.json` deliberately.
 - `src/workspace/fs.ts`: the `FileSystem` interface the stores use (Tauri fs plugin in the app, `test/fakeFs.ts` in tests). `src/stores/workspace.ts` = tree + watcher, `src/stores/editor.ts` = tabs/dirty/save/disk changes, `src/components/EditorPane.vue` = one CodeMirror view with a state per tab.
 - `src-tauri/src/pty.rs`: shells in PTYs (`portable-pty`). Rust picks the shell; output streams as raw bytes over a per-terminal `Channel`. `src/terminal/pty.ts` = the `PtyHost` interface, `src/stores/terminal.ts` = tabs and shell lifecycle, `src/components/TerminalView.vue` = one xterm.js instance.
 - Claude's edits and permissions: `sidecar/src/tools.ts` = permission policy (`decide`) and tool helpers; `sidecar/src/agent.ts` = turn options, `canUseTool`, the `PreToolUse` baseline hook. `src/stores/review.ts` = baselines and accept/reject; `EditorPane.vue` shows the diff (`@codemirror/merge`). `src/chat/refs.ts` = code references and the `<selection>` prompt format; `src/editor/askClaude.ts` = selection popup, Ctrl+L, right-click hook.
-- Layout is chat-first (`App.vue`): sidebar (Ctrl+B) | chat | editor on demand (Ctrl+Shift+E), terminal at the bottom.
+- Chat history and Desktop-style features: `src/components/ChatList.vue` (Chats tab: list, all folders, rename, delete), `src/chat/attachments.ts` (reading files in the webview, limits), `AttachmentChip.vue`; the model/effort pickers and paste/drop live in `ChatView.vue`. History requests (`listChats`, `loadChat`, ...) are answered by `requestId` (see `ask` in `claudeSidecar.ts`).
+- Layout is chat-first (`App.vue`): sidebar with Chats | Files tabs (Ctrl+B) | chat | editor on demand (Ctrl+Shift+E), terminal at the bottom. Ctrl+N = new chat.
 - Dev-only window hooks for e2e: `window.__tinkr.pinia`, `window.__tinkrOpenFolder(path)`.

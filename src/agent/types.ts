@@ -1,15 +1,28 @@
 // The AgentProvider interface (SPEC.md "Agent layer"). UI code talks to agents only
 // through this; Claude (via the sidecar) is the only implementation in v1.
 
-import type { AuthStatus, CliStatus, PermissionDecision, TurnOutcome } from '@shared/protocol'
+import type {
+  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, TurnOutcome,
+} from '@shared/protocol'
 
-export type { AuthStatus, CliStatus, PermissionDecision, TurnOutcome }
+export type {
+  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, TurnOutcome,
+}
+
+/** What a message is sent with, besides its text. `cwd` omitted = a chat without a folder. */
+export interface SendOptions {
+  cwd?: string
+  /** A `ModelOption.value`; omitted = Claude Code's default. */
+  model?: string
+  effort?: EffortLevel
+  attachments?: Attachment[]
+}
 
 /** Provider-neutral events the UI consumes. */
 export type AgentEvent =
   | { type: 'connected' }
   | { type: 'disconnected'; reason: string }
-  | { type: 'status'; cli: CliStatus; auth: AuthStatus }
+  | { type: 'status'; cli: CliStatus; auth: AuthStatus; models: ModelOption[] }
   | { type: 'turnStarted'; turnId: string; sessionId: string; model: string }
   | { type: 'text'; turnId: string; text: string }
   | { type: 'toolUse'; turnId: string; toolUseId: string; name: string; summary: string }
@@ -32,10 +45,17 @@ export interface AgentProvider {
   /** Re-check installation and login; answered with a `status` event. */
   refreshStatus(): Promise<void>
   /** Send a message. `sessionId` continues a conversation; null starts a new one. Returns the turn id. */
-  send(sessionId: string | null, text: string, options?: { cwd?: string }): Promise<string>
+  send(sessionId: string | null, text: string, options?: SendOptions): Promise<string>
   abort(turnId: string): Promise<void>
   /** Answer a `permissionRequest` event. */
   respondToPermission(requestId: string, decision: PermissionDecision): Promise<void>
+  // Conversation history, per folder (`cwd` omitted = chats without a folder).
+  /** Past chats, newest first: in one folder, or with `allFolders` every chat Claude Code has stored. */
+  listChats(cwd?: string, allFolders?: boolean): Promise<ChatSummary[]>
+  /** A past chat's messages, to show it again before continuing it. */
+  loadChat(sessionId: string, cwd?: string): Promise<HistoryItem[]>
+  renameChat(sessionId: string, title: string, cwd?: string): Promise<void>
+  deleteChat(sessionId: string, cwd?: string): Promise<void>
   /** Restart the agent process (e.g. after installing or signing in to the CLI). */
   restart(): Promise<void>
 }

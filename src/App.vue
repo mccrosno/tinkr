@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // Chat-first layout (SPEC.md "Layout"):
 //
-//   [ sidebar: file tree ] [ chat (main area) ] [ editor, on demand ]
+//   [ sidebar: chats | files ] [ chat (main area) ] [ editor, on demand ]
 //   [ terminal (toggle), under the chat and editor                   ]
 //
 // The editor opens when you open a file or Claude edits one, and can be hidden again.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { ClaudeSidecarProvider } from './agent/claudeSidecar'
+import ChatList from './components/ChatList.vue'
 import ChatView from './components/ChatView.vue'
 import EditorPane from './components/EditorPane.vue'
 import EditorTabs from './components/EditorTabs.vue'
@@ -21,6 +22,7 @@ import { useEditor } from './stores/editor'
 import { useReview } from './stores/review'
 import { useTerminal } from './stores/terminal'
 import { useWorkspace } from './stores/workspace'
+import { samePath } from './workspace/fs'
 
 const chat = useChat()
 const ws = useWorkspace()
@@ -41,6 +43,15 @@ const treeWidth = ref(stored('tinkr.treeWidth', 240))
 const editorWidth = ref(stored('tinkr.editorWidth', Math.round(window.innerWidth * 0.4)))
 const terminalHeight = ref(stored('tinkr.terminalHeight', 260))
 const sidebarOpen = ref(stored('tinkr.sidebarOpen', 1) === 1)
+/** Which list the sidebar shows (stored as 1 = chats, 2 = files; same "not 0" rule as below). */
+const sidebarTab = ref<'chats' | 'files'>(stored('tinkr.sidebarTab', 1) === 2 ? 'files' : 'chats')
+watch(sidebarTab, (tab) => {
+  try {
+    localStorage.setItem('tinkr.sidebarTab', tab === 'files' ? '2' : '1')
+  } catch {
+    /* not persisted */
+  }
+})
 watch([treeWidth, editorWidth, terminalHeight, sidebarOpen], ([t, e, h, s]) => {
   try {
     localStorage.setItem('tinkr.treeWidth', String(t))
@@ -80,18 +91,45 @@ function leaveFolder() {
   review.clear()
 }
 
-async function openFolder(path?: string) {
+/**
+ * Open a folder (a path, or pick one). Opening it yourself shows its files in the
+ * sidebar; `showFiles: false` keeps the Chats tab (when a chat from another folder is
+ * being opened from the list).
+ */
+async function openFolder(path?: string, { showFiles = true } = {}) {
   if (!(await confirmLeave())) return
   const before = ws.root
   if (path) await ws.openFolder(path)
   else await ws.pickAndOpen()
-  if (ws.root !== before) leaveFolder()
+  if (ws.root !== before) {
+    leaveFolder()
+    if (showFiles) sidebarTab.value = 'files'
+  }
 }
 
 async function closeFolder() {
   if (!(await confirmLeave())) return
   leaveFolder()
   await ws.closeFolder()
+}
+
+/**
+ * Open a chat from the all-folders list that belongs to another folder: switch to that
+ * folder (or close the folder, for a chat without one) the usual way, which asks first
+ * about unsaved edits and running terminals, then show the chat.
+ */
+async function openChatIn(folder: string | null, sessionId: string) {
+  if (chat.busy) return
+  if (folder === null) await closeFolder()
+  else await openFolder(folder, { showFiles: false })
+  const arrived = folder === null ? ws.root === null : !!ws.root && samePath(ws.root, folder)
+  if (!arrived) {
+    // Cancelled, or the folder couldn't be opened (moved or deleted): say so in the list.
+    if (ws.error) chat.chatsError = `Couldn't open that chat's folder: ${ws.error}`
+    return
+  }
+  await chat.setProject(ws.root)
+  await chat.openChat(sessionId)
 }
 
 function toggleTerminal() {
@@ -106,13 +144,15 @@ function toggleEditor() {
 watch(() => ws.root, (root) => chat.setProject(root))
 
 // App shortcuts, from anywhere in the window (Ctrl+S is handled inside the editor):
-// Ctrl/Cmd+O open a folder, Ctrl+B files, Ctrl+Shift+E editor, Ctrl+` terminal.
+// Ctrl/Cmd+O open a folder, Ctrl/Cmd+N new chat, Ctrl+B sidebar, Ctrl+Shift+E editor,
+// Ctrl+` terminal.
 // The terminal lets these keys through instead of sending them to the shell.
 function onKeydown(e: KeyboardEvent) {
   const mod = e.ctrlKey || e.metaKey
   const k = e.key.toLowerCase()
   let handled = true
   if (mod && !e.shiftKey && k === 'o') openFolder()
+  else if (mod && !e.shiftKey && k === 'n') chat.newChat()
   else if (mod && !e.shiftKey && k === 'b') sidebarOpen.value = !sidebarOpen.value
   else if (mod && e.shiftKey && k === 'e') toggleEditor()
   else if (e.ctrlKey && e.code === 'Backquote') toggleTerminal()
@@ -149,7 +189,7 @@ if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) 
       <span v-if="ws.name" class="project" :title="ws.root ?? ''">{{ ws.name }}</span>
       <span class="spacer" />
       <button class="tk-button" title="Open folder (Ctrl+O)" @click="openFolder()">Open folder…</button>
-      <button class="tk-button toggle" title="Show or hide files (Ctrl+B)" :aria-pressed="sidebarOpen" @click="sidebarOpen = !sidebarOpen">Files</button>
+      <button class="tk-button toggle" title="Show or hide the sidebar (Ctrl+B)" :aria-pressed="sidebarOpen" @click="sidebarOpen = !sidebarOpen">Sidebar</button>
       <button class="tk-button toggle" title="Show or hide the editor (Ctrl+Shift+E)" :aria-pressed="editor.panelOpen" :disabled="!editor.tabs.length" @click="toggleEditor">Editor</button>
       <button v-if="ws.root" class="tk-button toggle" title="Show or hide the terminal (Ctrl+`)" :aria-pressed="terminal.visible" @click="toggleTerminal">Terminal</button>
       <button class="tk-button" :disabled="chat.busy || !chat.messages.length" @click="chat.newChat()">New chat</button>
@@ -158,8 +198,13 @@ if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) 
     <main class="main">
       <template v-if="sidebarOpen">
         <aside class="side" :style="{ width: `${treeWidth}px` }">
-          <FileTree v-if="ws.root" @close-folder="closeFolder" />
-          <Welcome v-else compact @open="openFolder" />
+          <div class="tabs" role="tablist" aria-label="Sidebar">
+            <button role="tab" :aria-selected="sidebarTab === 'chats'" @click="sidebarTab = 'chats'">Chats</button>
+            <button role="tab" :aria-selected="sidebarTab === 'files'" @click="sidebarTab = 'files'">Files</button>
+          </div>
+          <ChatList v-if="sidebarTab === 'chats'" class="pane" @open-elsewhere="openChatIn" />
+          <FileTree v-else-if="ws.root" class="pane" @close-folder="closeFolder" />
+          <Welcome v-else class="pane" compact @open="openFolder" />
         </aside>
         <Splitter v-model:size="treeWidth" :min="160" :max="520" side="left" label="Resize sidebar" />
       </template>
@@ -196,7 +241,11 @@ if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) 
 .spacer { flex: 1; }
 .toggle[aria-pressed='true'] { border-color: var(--tk-accent); }
 .main { flex: 1; min-height: 0; display: flex; }
-.side { flex: none; min-width: 0; background: var(--tk-surface); }
+.side { flex: none; min-width: 0; display: flex; flex-direction: column; background: var(--tk-surface); }
+.tabs { display: flex; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--tk-border); }
+.tabs button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 4px 8px; color: var(--tk-text-muted); }
+.tabs button[aria-selected='true'] { color: var(--tk-text); border-bottom-color: var(--tk-accent); }
+.pane { flex: 1; min-height: 0; overflow: auto; }
 .work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .upper { flex: 1; min-height: 0; display: flex; }
 /* The chat is the main area: it takes the space the editor doesn't, but never less than 320px. */

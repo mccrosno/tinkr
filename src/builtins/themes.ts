@@ -21,7 +21,7 @@ function activate(api: TinkrApi) {
     name: 'Midnight',
     kind: 'dark',
     tokens: {
-      window: '#0d1117',
+      window: '#06090d',
       bg: '#0d1117',
       surface: '#131a24',
       'surface-2': '#1a2330',

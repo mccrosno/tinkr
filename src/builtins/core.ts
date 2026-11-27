@@ -33,8 +33,25 @@ function activate(api: TinkrApi) {
   // closing a panel's tab in the dock tells the store it's hidden.
   const editorWanted = computed(() => editor.panelOpen && editor.tabs.length > 0)
   const terminalWanted = computed(() => terminal.visible && terminal.tabs.length > 0)
-  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.hide('editor')))
-  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.hide('terminal')))
+  // Putting one away on its own accord (`retract`) leaves other panels on its card alone.
+  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.retract('editor')))
+  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.retract('terminal')))
+  // Brought on screen from the dock (the rail, the panel list): the stores follow, and
+  // a terminal with no shell yet starts one.
+  watch(
+    () => layout.shown.editor,
+    (on) => {
+      if (on && editor.tabs.length) editor.panelOpen = true
+    },
+  )
+  watch(
+    () => layout.shown.terminal,
+    (on) => {
+      if (!on || !ws.root) return
+      if (terminal.tabs.length) terminal.visible = true
+      else terminal.create(ws.root)
+    },
+  )
   watch(
     () => layout.visible.editor,
     (on) => {
@@ -50,10 +67,16 @@ function activate(api: TinkrApi) {
   // After a preset is laid out: it may show an editor or terminal that has nothing to show.
   layout.onApplied(() => {
     if (editorWanted.value) layout.show('editor', { activate: false })
-    else layout.hide('editor')
+    else layout.retract('editor')
     if (terminalWanted.value) layout.show('terminal', { activate: false })
-    else layout.hide('terminal')
+    else layout.retract('terminal')
   })
+  // "Ask Claude", a file added or a plugin filling the message box: the chat must be on
+  // screen, even if it was closed.
+  watch(
+    () => chat.focusRequests,
+    () => layout.show('chat'),
+  )
   // The chat works in the open folder; switching folders starts a new conversation.
   watch(
     () => ws.root,
@@ -65,17 +88,32 @@ function activate(api: TinkrApi) {
   // --- Commands -----------------------------------------------------------------
   command({ id: 'workspace.openFolder', title: 'Open folder…', keybinding: 'Ctrl+O', run: (path) => openFolder(typeof path === 'string' ? path : undefined) })
   command({ id: 'workspace.closeFolder', title: 'Close folder', run: () => closeFolder() })
-  command({ id: 'chat.new', title: 'New chat', keybinding: 'Ctrl+N', run: () => chat.newChat() })
+  command({
+    id: 'chat.new',
+    title: 'New chat',
+    keybinding: 'Ctrl+N',
+    run: () => {
+      chat.newChat()
+      layout.show('chat')
+    },
+  })
+  command({
+    id: 'chat.open',
+    title: 'Open a chat',
+    hidden: true,
+    run: (id) => {
+      layout.show('chat')
+      return chat.openChat(String(id))
+    },
+  })
   command({ id: 'chat.openIn', title: 'Open a chat in its folder', hidden: true, run: (folder, id) => openChatIn(folder as string | null, id as string) })
   command({
     id: 'layout.toggleSidebar',
     title: 'Show or hide Chats and Files',
     keybinding: 'Ctrl+B',
     run() {
-      if (sidebarShown()) {
-        layout.hide('chats')
-        layout.hide('files')
-      } else {
+      if (sidebarShown()) layout.retract('chats', 'files')
+      else {
         layout.show('files', { activate: false })
         layout.show('chats', { activate: false })
       }

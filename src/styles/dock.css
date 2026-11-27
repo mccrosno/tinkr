@@ -1,19 +1,20 @@
-/* Dockview in Tinkr's colors: its CSS variables (--dv-*) mapped to Tinkr's tokens
-   (--tk-*), so the dock follows the light/dark scheme and any future theme. The
-   structure follows dockview's own dark theme; only values differ. */
+/* Dockview in Tinkr's colors and shapes: its CSS variables (--dv-*) mapped to Tinkr's
+   tokens (--tk-*), so the dock follows the light/dark scheme and any theme. Every
+   group of tabs is a rounded card with a gap around it; its tab bar is the card's
+   header and the tabs are pills, so a single tab reads as a title. */
 
 .dockview-theme-tinkr {
   color-scheme: light dark;
 
   /* Sizes and spacing */
   --dv-tabs-and-actions-container-font-size: 12.5px;
-  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-height: 38px;
   --dv-tab-font-size: inherit;
   --dv-tab-margin: 0;
   --dv-tab-close-icon-size: inherit;
-  --dv-border-radius: 0px;
-  --dv-tab-border-radius: 0px;
-  --dv-sash-border-radius: 0px;
+  --dv-border-radius: var(--tk-radius-card);
+  --dv-tab-border-radius: 6px;
+  --dv-sash-border-radius: 3px;
   --dv-dropdown-border-radius: var(--tk-radius-sm);
   --dv-spacing-padding: 0px;
   --dv-overlay-z-index: 999;
@@ -21,13 +22,13 @@
   --dv-floating-titlebar-height: 22px;
   --dv-floating-group-dragging-opacity: 0.5;
 
-  /* Surfaces */
+  /* Surfaces: the card paints the background, the header and tabs sit on it. */
   --dv-group-view-background-color: var(--tk-bg);
-  --dv-tabs-and-actions-container-background-color: var(--tk-surface);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--tk-bg);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--tk-surface);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--tk-bg);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--tk-surface);
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--tk-surface-2);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--tk-surface-2);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-floating-titlebar-background-color: var(--tk-surface);
 
   /* Text */
@@ -36,9 +37,9 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--tk-text);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--tk-text-muted);
 
-  /* Lines */
-  --dv-tab-divider-color: var(--tk-border);
-  --dv-separator-border: var(--tk-border);
+  /* Lines: none between cards, the gap separates them. */
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: transparent;
   --dv-paneview-header-border-color: var(--tk-border);
   --dv-floating-border: 1px solid var(--tk-border);
   --dv-floating-titlebar-border-bottom: 1px solid var(--tk-border);
@@ -53,17 +54,35 @@
   /* Dragging */
   --dv-drag-over-background-color: color-mix(in srgb, var(--tk-accent) 18%, transparent);
   --dv-drag-over-border-color: var(--tk-accent);
-  --dv-drag-over-border: none;
+  --dv-drag-over-border: 2px solid var(--tk-accent);
   --dv-edge-dock-indicator-color: var(--tk-accent);
   --dv-paneview-active-outline-color: var(--tk-focus);
   --dv-icon-hover-background-color: var(--tk-surface-2);
   --dv-tabs-container-scrollbar-color: var(--tk-border);
 }
 
-/* The active tab of the focused group gets an accent line, like the editor's own tabs. */
-.dockview-theme-tinkr .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
-  box-shadow: inset 0 2px 0 var(--tk-accent);
+/* The card. */
+.dockview-theme-tinkr .dv-groupview {
+  overflow: hidden;
+  border-radius: var(--tk-radius-card);
+  background: var(--tk-bg);
 }
+/* The content box would paint a second, see-through layer over the card's. */
+.dockview-theme-tinkr .dv-groupview > .dv-content-container { background: transparent; }
+
+/* The header and its pills. */
+.dockview-theme-tinkr .dv-groupview > .dv-tabs-and-actions-container { align-items: center; padding-left: 6px; }
+.dockview-theme-tinkr .dv-tabs-container { align-items: center; gap: 2px; }
+.dockview-theme-tinkr .dv-tabs-container > .dv-tab {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: grab;
+}
+.dockview-theme-tinkr .dv-tabs-container > .dv-tab:hover { color: var(--tk-text); }
 
 /* Glass: a theme with a background, see-through panels and blur (src/theme/apply.ts adds
    `tk-glass` to <html> and sets --tk-blur; "Reduce effects" leaves it off). Both

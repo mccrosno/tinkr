@@ -30,7 +30,6 @@ export interface PanelEntry {
   plugin: string
   title: string
   location: PanelLocation
-  closable: boolean
   icon: Icon | null
   isEnabled?: () => boolean
   badge?: () => boolean
@@ -159,7 +158,6 @@ export const usePlugins = defineStore('plugins', () => {
       plugin,
       title: def.title,
       location: def.location ?? 'right',
-      closable: def.closable ?? true,
       icon: iconFor(plugin, `panel "${id}"`, def.icon, url),
       // Called on `def`, so a plugin can use `this` in them.
       isEnabled: def.isEnabled && (() => def.isEnabled!()),

@@ -1,17 +1,19 @@
-// The docking layout (dockview): the built-in presets and the rules for showing and
-// hiding a panel. `Dock` wraps dockview's API behind the small `DockHost` interface the
-// layout store uses, so the store is unit-tested with a fake.
+// The docking layout (dockview): the built-in presets and the rules for showing,
+// hiding, closing and moving panels. `Dock` wraps dockview's API behind the small
+// `DockHost` interface the layout store uses, so the store is unit-tested with a fake.
 //
 // Panels come from the plugin registry (the built-in ones are plugins too): the dock
-// asks it for a panel's title, close button and default location (`PanelInfo`).
+// asks it for a panel's title and default location (`PanelInfo`).
 //
-// Hiding a panel hides its whole group (`group.api.setVisible(false)`) instead of
-// removing the panel, so it comes back in the same place and size. The one exception
-// is a panel stacked in the same group as the chat: the chat can't be hidden, so that
-// panel is closed instead and comes back at its "home" position.
+// Two ways for a panel to leave the screen:
+// - Hiding hides its whole group (`group.api.setVisible(false)`), so it comes back in
+//   the same place and size.
+// - Closing takes the one panel out of the layout. Where it was is recorded first
+//   (places.ts) and saved with the layout, so it comes back there.
 
 import type { AddPanelOptions, DockviewApi, IDockviewPanel } from 'dockview-vue'
 import type { PanelLocation } from '../plugins/api'
+import { findSide, type Place } from './places'
 
 /** A panel's id: a built-in one below, or "<plugin>.<id>". */
 export type PanelId = string
@@ -22,12 +24,14 @@ export const BUILT_IN_PANELS = ['chats', 'files', 'chat', 'editor', 'terminal'] 
 /** What the dock needs to know about a panel. */
 export interface PanelInfo {
   title: string
-  closable: boolean
   location: PanelLocation
 }
 
 /** dockview's component for every panel; DockLayout.vue renders it as a PanelHost. */
 export const HOST_COMPONENT = 'host'
+
+/** The space between panel cards, in px (dockview's theme gap). */
+export const PANEL_GAP = 6
 
 /** The built-in presets. Their ids are stable: saved arrangements are stored under them. */
 export const BUILT_IN_PRESETS = [
@@ -37,26 +41,41 @@ export const BUILT_IN_PRESETS = [
 
 export type BuiltInPresetId = (typeof BUILT_IN_PRESETS)[number]['id']
 
+/** Which half of its group a panel splits off into. */
+export type SplitSide = 'left' | 'right' | 'top' | 'bottom'
+/** An outer edge of the whole dock. */
+export type DockEdge = 'left' | 'right' | 'bottom'
+
 /** What the layout store needs from the dock. */
 export interface DockHost {
-  /** Make a panel visible and (by default) its group's active tab. Adds it at its home position if it isn't in the layout. */
+  /** Make a panel visible and (by default) its group's active tab. A closed one comes back to its last place. */
   show(id: PanelId, options?: { activate?: boolean }): void
+  /** Hide the panel's group, keeping its place and size. */
   hide(id: PanelId): void
+  /**
+   * Put panels away without taking others with them: a group holding only these is
+   * hidden; one holding other panels too just has these closed.
+   */
+  retract(ids: PanelId[]): void
+  /** Take a panel out of the layout, remembering where it was. */
+  close(id: PanelId): void
+  /** Move a panel out of its group into a new one on that side of it. */
+  split(id: PanelId, side: SplitSide): void
+  /** Move a panel into a new group along an edge of the dock. */
+  toEdge(id: PanelId, edge: DockEdge): void
   /** Visible and the active tab of its group. */
   isShown(id: PanelId): boolean
   /** In the layout and in a visible group (it may be a background tab). */
   isVisible(id: PanelId): boolean
-  /** Take a panel out of the layout (its plugin is gone). */
-  remove(id: PanelId): void
   /** The ids of the panels in the layout. */
   panelIds(): PanelId[]
-  /** The arrangement as JSON (dockview's own format), to save. */
+  /** The arrangement as JSON (dockview's own format, plus closed panels' places), to save. */
   snapshot(): unknown
   /** Load a saved arrangement. Returns false if it couldn't be used (the dock is then rebuilt). */
   restore(saved: unknown): boolean
   /** Lay out a built-in preset from scratch. */
   build(preset: BuiltInPresetId): void
-  /** Which built-in preset's shape decides where a missing panel is added (custom presets use Agent's). */
+  /** Which built-in preset's shape decides where a never-placed panel is added (custom presets use Agent's). */
   setHomeRules(preset: BuiltInPresetId): void
   /** Called after anything changes: a drag, a resize, a panel shown, hidden or closed. */
   onChange(listener: () => void): () => void
@@ -64,20 +83,23 @@ export interface DockHost {
 
 /** Default sizes (px), used when a preset is built. The editor's default is a share of the window. */
 const SIDEBAR_WIDTH = 240
+const RIGHT_WIDTH = 360
 const TERMINAL_HEIGHT = 260
 const CHAT_WIDTH_IN_EDITOR_PRESET = 420
 const editorWidth = () => Math.round(window.innerWidth * 0.4)
 /** Smaller than this when shown again = unusable (dockview squeezes hidden groups down to its 100px minimum); the default size is used instead. */
-const MIN_TERMINAL_HEIGHT = 150
+const MIN_BOTTOM_HEIGHT = 150
 const MIN_EDITOR_WIDTH = 280
-const MIN_SIDEBAR_WIDTH = 140
+const MIN_WIDTH = 140
 
 /** The other sidebar panel (Chats and Files share a group by default). */
 const sibling = (id: 'chats' | 'files') => (id === 'chats' ? 'files' : 'chats')
 
 export class Dock implements DockHost {
-  /** Which built-in preset's rules decide where a missing panel is added. */
+  /** Which built-in preset's rules decide where a never-placed panel is added. */
   private homeRules: BuiltInPresetId = 'agent'
+  /** Where each closed panel was. Saved with the layout. */
+  private places = new Map<PanelId, Place>()
 
   /** `info` is the registry's view of a panel; undefined = not registered (yet). */
   constructor(
@@ -94,36 +116,66 @@ export class Dock implements DockHost {
   }
 
   private add(id: PanelId, position: AddPanelOptions['position'], extra: Partial<AddPanelOptions> = {}) {
-    const info = this.info(id) ?? { title: id, closable: true, location: 'right' as const }
     return this.api.addPanel({
       id,
       component: HOST_COMPONENT,
       params: { panel: id },
-      title: info.title,
-      // The chat (closable: false) gets a tab without a close button (DockLayout.vue).
-      tabComponent: info.closable ? undefined : 'pinned',
+      title: this.info(id)?.title ?? id,
       ...(position ? { position } : {}),
       ...extra,
     } as AddPanelOptions)
   }
 
+  /** Does the panel belong along the bottom (so its height is what matters)? */
+  private isBottom(id: PanelId) {
+    return id === 'terminal' || this.info(id)?.location === 'bottom'
+  }
+
+  private defaultSize(id: PanelId): { initialWidth?: number; initialHeight?: number } {
+    if (this.isBottom(id)) return { initialHeight: TERMINAL_HEIGHT }
+    if (id === 'editor') return { initialWidth: editorWidth() }
+    const location = this.info(id)?.location
+    if (location === 'center') return {}
+    return { initialWidth: location === 'right' ? RIGHT_WIDTH : SIDEBAR_WIDTH }
+  }
+
+  /** Where a closed panel goes back to, if what it was next to is still there. */
+  private lastPlace(id: PanelId): { position: AddPanelOptions['position']; size: Partial<AddPanelOptions> } | null {
+    const place = this.places.get(id)
+    if (!place) return null
+    const mate = place.mates.find((m) => this.panel(m))
+    if (mate) return { position: { referencePanel: mate, direction: 'within' }, size: {} }
+    const side = place.side
+    if (!side || (side.panel && !this.panel(side.panel))) return null
+    const sideways = side.direction === 'left' || side.direction === 'right'
+    return {
+      position: side.panel ? { referencePanel: side.panel, direction: side.direction } : { direction: side.direction },
+      size: sideways ? { initialWidth: place.width } : { initialHeight: place.height },
+    }
+  }
+
   /**
-   * Where a panel goes when it isn't in the layout: next to a panel that is, following
-   * the current preset's shape (the chat is always there, so it's the fallback anchor).
+   * Where a panel goes when it has no last place: next to a panel that is in the
+   * layout, following the current preset's shape.
    */
   private home(id: PanelId): AddPanelOptions['position'] {
     const has = (p: PanelId) => !!this.panel(p)
-    if (id === 'chat') return undefined
+    const editorPreset = this.homeRules === 'editor'
+    if (id === 'chat') {
+      if (has('editor')) return { referencePanel: 'editor', direction: editorPreset ? 'right' : 'left' }
+      return this.api.panels.length ? { direction: 'right' } : undefined
+    }
     if (id === 'chats' || id === 'files') {
       if (has(sibling(id))) return { referencePanel: sibling(id), direction: 'within' }
       return { direction: 'left' } // the left edge of the whole layout
     }
     if (id === 'editor') {
-      return this.homeRules === 'editor' ? { referencePanel: 'chat', direction: 'left' } : { referencePanel: 'chat', direction: 'right' }
+      if (has('chat')) return { referencePanel: 'chat', direction: editorPreset ? 'left' : 'right' }
+      return { direction: 'right' }
     }
     if (id === 'terminal') {
       // Under the editor in the Editor preset, else along the whole bottom.
-      if (this.homeRules === 'editor' && has('editor')) return { referencePanel: 'editor', direction: 'below' }
+      if (editorPreset && has('editor')) return { referencePanel: 'editor', direction: 'below' }
       return { direction: 'below' }
     }
     // A plugin's panel: by its declared location, next to the built-in panel that lives there.
@@ -147,33 +199,71 @@ export class Dock implements DockHost {
         group.setVisible(true)
         // A hidden group comes back at its old size, which can be next to nothing (it was
         // squeezed while hidden, or saved that way). Below a usable size, use the default.
-        if (id === 'terminal' && group.height < MIN_TERMINAL_HEIGHT) group.setSize({ height: TERMINAL_HEIGHT })
-        if (id === 'editor' && group.width < MIN_EDITOR_WIDTH) group.setSize({ width: editorWidth() })
-        if ((id === 'chats' || id === 'files') && group.width < MIN_SIDEBAR_WIDTH) group.setSize({ width: SIDEBAR_WIDTH })
+        const { initialWidth, initialHeight } = this.defaultSize(id)
+        if (this.isBottom(id)) {
+          if (group.height < MIN_BOTTOM_HEIGHT) group.setSize({ height: initialHeight })
+        } else if (group.width < (id === 'editor' ? MIN_EDITOR_WIDTH : MIN_WIDTH) && initialWidth) {
+          group.setSize({ width: initialWidth })
+        }
       }
       if (activate) existing.api.setActive()
       return
     }
-    const location = this.info(id)?.location
-    const size =
-      id === 'terminal' || location === 'bottom'
-        ? { initialHeight: TERMINAL_HEIGHT }
-        : id === 'editor'
-          ? { initialWidth: editorWidth() }
-          : location === 'right'
-            ? { initialWidth: 360 }
-            : { initialWidth: SIDEBAR_WIDTH }
-    const added = this.add(id, this.home(id), { ...size, inactive: !activate })
+    const last = this.lastPlace(id)
+    const added = this.add(id, last ? last.position : this.home(id), { ...(last ? last.size : this.defaultSize(id)), inactive: !activate })
+    this.places.delete(id)
     // The panel it was put next to may be hidden; a new panel should be seen.
     if (!added.group.api.isVisible) added.group.api.setVisible(true)
   }
 
   hide(id: PanelId) {
+    this.panel(id)?.group.api.setVisible(false)
+  }
+
+  retract(ids: PanelId[]) {
+    for (const id of ids) {
+      const p = this.panel(id)
+      if (!p || !p.group.api.isVisible) continue
+      if (p.group.panels.every((x) => ids.includes(x.id))) p.group.api.setVisible(false)
+      else this.close(id)
+    }
+  }
+
+  private placeOf(panel: IDockviewPanel): Place {
+    const group = panel.group
+    const mates = group.panels.filter((p) => p.id !== panel.id).map((p) => p.id)
+    const mine = group.element.getBoundingClientRect()
+    // A hidden group has no box to describe.
+    if (!group.api.isVisible || !mine.width) return { mates, width: 0, height: 0 }
+    const others = this.api.groups
+      .filter((g) => g !== group && g.api.isVisible && g.panels.length)
+      .map((g) => ({ panel: (g.activePanel ?? g.panels[0]).id, box: g.element.getBoundingClientRect() }))
+    return { mates, side: findSide(mine, others), width: Math.round(mine.width), height: Math.round(mine.height) }
+  }
+
+  close(id: PanelId) {
     const p = this.panel(id)
-    if (!p || id === 'chat') return
-    // The chat's group can't be hidden; take just this panel out of it.
-    if (p.group.panels.some((x) => x.id === 'chat')) p.api.close()
-    else p.group.api.setVisible(false)
+    if (!p) return
+    const place = this.placeOf(p)
+    if (place.mates.length || place.side) this.places.set(id, place)
+    p.api.close()
+  }
+
+  split(id: PanelId, side: SplitSide) {
+    const p = this.panel(id)
+    // A panel alone in its group has nothing to split off from.
+    if (!p || p.group.panels.length < 2) return
+    p.api.moveTo({ group: p.group, position: side })
+  }
+
+  toEdge(id: PanelId, edge: DockEdge) {
+    const p = this.panel(id)
+    if (!p) return
+    const group = this.api.addGroup({ direction: edge === 'bottom' ? 'below' : edge })
+    p.api.moveTo({ group, position: 'center' })
+    if (edge === 'bottom') p.group.api.setSize({ height: TERMINAL_HEIGHT })
+    else p.group.api.setSize({ width: id === 'editor' ? editorWidth() : edge === 'left' ? SIDEBAR_WIDTH : RIGHT_WIDTH })
+    p.api.setActive()
   }
 
   isShown(id: PanelId) {
@@ -186,26 +276,25 @@ export class Dock implements DockHost {
     return !!p && p.group.api.isVisible
   }
 
-  remove(id: PanelId) {
-    this.panel(id)?.api.close()
-  }
-
   panelIds() {
     return this.api.panels.map((p) => p.id)
   }
 
   snapshot() {
-    return this.api.toJSON()
+    return { ...this.api.toJSON(), tinkrPlaces: Object.fromEntries(this.places) }
   }
 
   restore(saved: unknown) {
+    if (!saved || typeof saved !== 'object' || !('grid' in saved)) return false
+    const { tinkrPlaces, ...layout } = structuredClone(saved) as Record<string, unknown> & { tinkrPlaces?: Record<string, Place> }
+    // Layouts saved before the interface refresh gave the chat a tab component that's gone.
+    for (const p of Object.values((layout.panels ?? {}) as Record<string, { tabComponent?: string }>)) delete p.tabComponent
     try {
-      this.api.fromJSON(saved as Parameters<DockviewApi['fromJSON']>[0])
+      this.api.fromJSON(layout as unknown as Parameters<DockviewApi['fromJSON']>[0])
     } catch {
       return false
     }
-    // A layout without the chat isn't usable (it may come from an older version).
-    if (!this.panel('chat')) return false
+    this.places = new Map(Object.entries(tinkrPlaces ?? {}))
     // Panels nothing has registered (a plugin that's gone or disabled) are dropped.
     for (const p of [...this.api.panels]) if (!this.info(p.id)) p.api.close()
     return true
@@ -213,6 +302,7 @@ export class Dock implements DockHost {
 
   build(preset: BuiltInPresetId) {
     this.homeRules = preset
+    this.places.clear()
     this.api.clear()
     if (preset === 'agent') {
       // [ Chats | Files ] [ Chat ] [ Editor ]

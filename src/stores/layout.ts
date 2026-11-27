@@ -8,8 +8,11 @@
 
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
-import { BUILT_IN_PANELS, BUILT_IN_PRESETS, type BuiltInPresetId, type DockHost, type PanelId } from '../layout/dock'
+import { BUILT_IN_PANELS, BUILT_IN_PRESETS, type BuiltInPresetId, type DockEdge, type DockHost, type PanelId, type SplitSide } from '../layout/dock'
 import { usePlugins } from './plugins'
+
+/** Where a panel is: on a visible card, on a hidden one, or not in the layout. */
+export type PanelState = 'open' | 'hidden' | 'closed'
 
 export interface Preset {
   id: string
@@ -68,6 +71,10 @@ export const useLayout = defineStore('layout', () => {
   const shown = reactive(Object.fromEntries(BUILT_IN_PANELS.map((id) => [id, false])) as Record<PanelId, boolean>)
   /** Which panels are in the layout in a visible group (maybe as a background tab). */
   const visible = reactive(Object.fromEntries(BUILT_IN_PANELS.map((id) => [id, false])) as Record<PanelId, boolean>)
+  /** Which panels are in the layout at all, hidden or not. */
+  const present = reactive<Record<PanelId, boolean>>({})
+  /** True when the dock is laid out and nothing is on screen (the "Nothing open" message). */
+  const empty = computed(() => !!host.value && !Object.values(visible).some(Boolean))
   const appliedListeners = new Set<() => void>()
   let applying = false
   let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -88,8 +95,11 @@ export const useLayout = defineStore('layout', () => {
 
   function refreshShown() {
     const registry = usePlugins()
-    const ids = new Set<PanelId>([...BUILT_IN_PANELS, ...registry.panels.keys(), ...(host.value?.panelIds() ?? [])])
+    const inLayout = new Set(host.value?.panelIds() ?? [])
+    // Ids seen before are included, so a panel that's gone doesn't stay marked as on screen.
+    const ids = new Set<PanelId>([...BUILT_IN_PANELS, ...registry.panels.keys(), ...inLayout, ...Object.keys(visible)])
     for (const id of ids) {
+      present[id] = inLayout.has(id)
       shown[id] = host.value?.isShown(id) ?? false
       visible[id] = host.value?.isVisible(id) ?? false
       // Panels hear about their own visibility (the plugin API's `ctx.visible`).
@@ -155,7 +165,7 @@ export const useLayout = defineStore('layout', () => {
     h.onChange(onDockChange)
     // A plugin that's unloaded for good takes its panel out of the layout.
     usePlugins().onPanelRemoved((id) => {
-      h.remove(id)
+      h.close(id)
       refreshShown()
     })
     apply(activeId.value)
@@ -223,6 +233,26 @@ export const useLayout = defineStore('layout', () => {
     if (host.value?.isShown(id)) hide(id)
     else show(id)
   }
+  /** Put panels away without hiding others that share their card (see `DockHost.retract`). */
+  function retract(...ids: PanelId[]) {
+    host.value?.retract(ids)
+    refreshShown()
+  }
+  function close(id: PanelId) {
+    host.value?.close(id)
+    refreshShown()
+  }
+  function split(id: PanelId, side: SplitSide) {
+    host.value?.split(id, side)
+    refreshShown()
+  }
+  function toEdge(id: PanelId, edge: DockEdge) {
+    host.value?.toEdge(id, edge)
+    refreshShown()
+  }
+  function state(id: PanelId): PanelState {
+    return visible[id] ? 'open' : present[id] ? 'hidden' : 'closed'
+  }
 
   /** Called after a preset is laid out (see `apply`). */
   function onApplied(listener: () => void) {
@@ -231,7 +261,8 @@ export const useLayout = defineStore('layout', () => {
   }
 
   return {
-    presets, active, activeId, shown, visible,
-    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, snapshot, show, hide, toggle, onApplied, saveNow, flush,
+    presets, active, activeId, shown, visible, empty,
+    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, snapshot, show, hide, toggle, retract, close, split, toEdge, state,
+    onApplied, saveNow, flush,
   }
 })

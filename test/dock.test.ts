@@ -13,6 +13,41 @@ function fakeApi() {
 }
 const registered = (id: string) => (id === 'chat' ? { title: 'Chat', location: 'center' as const } : undefined)
 
+/** One card holding these panels, the first in front. */
+function card(...ids: string[]) {
+  const state = { visible: true, closed: [] as string[] }
+  const group = {
+    api: { get isVisible() { return state.visible }, setVisible: (v: boolean) => (state.visible = v) },
+    element: { getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }) },
+    panels: [] as unknown[],
+    activePanel: undefined as unknown,
+  }
+  group.panels = ids.map((id) => ({ id, group, api: { close: () => state.closed.push(id) } }))
+  group.activePanel = group.panels[0]
+  const api = { getPanel: (id: string) => group.panels.find((p) => (p as { id: string }).id === id), groups: [group] }
+  return { dock: new Dock(api as unknown as DockviewApi, registered), state }
+}
+
+describe('putting a panel away', () => {
+  test('hides its whole card, other tabs and all', () => {
+    const { dock, state } = card('terminal', 'console')
+    dock.putAway('terminal')
+    expect(state).toEqual({ visible: false, closed: [] })
+  })
+
+  test('on the card with the chat, closes just that panel', () => {
+    const { dock, state } = card('editor', 'chat')
+    dock.putAway('editor')
+    expect(state).toEqual({ visible: true, closed: ['editor'] })
+  })
+
+  test('leaves a background tab alone', () => {
+    const { dock, state } = card('console', 'terminal')
+    dock.putAway('terminal')
+    expect(state).toEqual({ visible: true, closed: [] })
+  })
+})
+
 describe('restoring a saved layout', () => {
   const saved = {
     grid: { root: { type: 'branch', data: [] } },

@@ -33,9 +33,8 @@ function activate(api: TinkrApi) {
   // closing a panel's tab in the dock tells the store it's hidden.
   const editorWanted = computed(() => editor.panelOpen && editor.tabs.length > 0)
   const terminalWanted = computed(() => terminal.visible && terminal.tabs.length > 0)
-  // Putting one away on its own accord (`retract`) leaves other panels on its card alone.
-  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.retract('editor')))
-  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.retract('terminal')))
+  watch(editorWanted, (on) => (on ? layout.show('editor') : layout.putAway('editor')))
+  watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.putAway('terminal')))
   // Brought on screen from the dock (the rail, the panel list): the stores follow, and
   // a terminal with no shell yet starts one.
   watch(
@@ -67,9 +66,9 @@ function activate(api: TinkrApi) {
   // After a preset is laid out: it may show an editor or terminal that has nothing to show.
   layout.onApplied(() => {
     if (editorWanted.value) layout.show('editor', { activate: false })
-    else layout.retract('editor')
+    else layout.putAway('editor')
     if (terminalWanted.value) layout.show('terminal', { activate: false })
-    else layout.retract('terminal')
+    else layout.putAway('terminal')
   })
   // "Ask Claude", a file added or a plugin filling the message box: the chat must be on
   // screen, even if it was closed.

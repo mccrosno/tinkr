@@ -35,6 +35,9 @@ class FakeDock implements DockHost {
   retract(ids: PanelId[]) {
     for (const id of ids) this.hide(id)
   }
+  putAway(id: PanelId) {
+    if (this.isShown(id)) this.hide(id)
+  }
   moves: string[] = []
   split(id: PanelId, side: SplitSide) {
     this.moves.push(`${id} split ${side}`)

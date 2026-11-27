@@ -178,6 +178,17 @@ try {
   await until('sidebar back', `${layout}.visible.files && ${layout}.visible.chats`)
   pass('Ctrl+B hides and shows Chats and Files')
 
+  // A shortcut hides the panel's whole card, even with another tab on it.
+  await key('`', 'Backquote', 192, CTRL)
+  if (!(await js<boolean>(`${layout}.shown.terminal`))) await key('`', 'Backquote', 192, CTRL)
+  await until('terminal in front', `${layout}.shown.terminal`)
+  await js(`${layout}.show('console'); ${dock}.getPanel('console').api.moveTo({ group: ${dock}.getPanel('terminal').group }); ${dock}.getPanel('terminal').api.setActive()`)
+  await until('stacked', `${layout}.shown.terminal && ${dock}.getPanel('console').group === ${dock}.getPanel('terminal').group`)
+  await key('`', 'Backquote', 192, CTRL)
+  await until('card hidden', `!${layout}.visible.terminal && !${layout}.visible.console && !!${dock}.getPanel('terminal')`)
+  await js(`${layout}.close('console')`)
+  pass('Ctrl+` hides the terminal card, including the tab stacked on it')
+
   // The chat closes like any panel, and comes back from the rail where it was, draft and all.
   const chatBefore = (await box('chat'))!
   await panelMenu('chat', 'Close panel')

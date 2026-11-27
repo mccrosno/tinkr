@@ -238,6 +238,11 @@ export const useLayout = defineStore('layout', () => {
     host.value?.retract(ids)
     refreshShown()
   }
+  /** Hide a panel that has nothing to show, or that its shortcut hid (see `DockHost.putAway`). */
+  function putAway(id: PanelId) {
+    host.value?.putAway(id)
+    refreshShown()
+  }
   function close(id: PanelId) {
     host.value?.close(id)
     refreshShown()
@@ -262,7 +267,7 @@ export const useLayout = defineStore('layout', () => {
 
   return {
     presets, active, activeId, shown, visible, empty,
-    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, snapshot, show, hide, toggle, retract, close, split, toEdge, state,
+    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, snapshot, show, hide, toggle, retract, putAway, close, split, toEdge, state,
     onApplied, saveNow, flush,
   }
 })

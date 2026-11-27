@@ -58,6 +58,12 @@ export interface DockHost {
    * hidden; one holding other panels too just has these closed.
    */
   retract(ids: PanelId[]): void
+  /**
+   * The panel has nothing to show, or its shortcut hid it: if it's the one in front,
+   * hide its card. A card with the chat on it stays, and just the panel is closed. A
+   * background tab is left alone.
+   */
+  putAway(id: PanelId): void
   /** Take a panel out of the layout, remembering where it was. */
   close(id: PanelId): void
   /** Move a panel out of its group into a new one on that side of it. */
@@ -228,6 +234,13 @@ export class Dock implements DockHost {
       if (p.group.panels.every((x) => ids.includes(x.id))) p.group.api.setVisible(false)
       else this.close(id)
     }
+  }
+
+  putAway(id: PanelId) {
+    if (!this.isShown(id)) return
+    const group = this.panel(id)!.group
+    if (id !== 'chat' && group.panels.some((p) => p.id === 'chat')) this.close(id)
+    else group.api.setVisible(false)
   }
 
   private placeOf(panel: IDockviewPanel): Place {

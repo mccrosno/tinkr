@@ -4,8 +4,6 @@
    header and the tabs are pills, so a single tab reads as a title. */
 
 .dockview-theme-tinkr {
-  color-scheme: light dark;
-
   /* Sizes and spacing */
   --dv-tabs-and-actions-container-font-size: 12.5px;
   --dv-tabs-and-actions-container-height: 38px;
@@ -83,6 +81,8 @@
   cursor: grab;
 }
 .dockview-theme-tinkr .dv-tabs-container > .dv-tab:hover { color: var(--tk-text); }
+/* dockview-vue's wrapper fills the pill's height: center the title in it. */
+.dockview-theme-tinkr .dv-tab > .dv-vue-part { display: flex; align-items: center; }
 
 /* Glass: a theme with a background, see-through panels and blur (src/theme/apply.ts adds
    `tk-glass` to <html> and sets --tk-blur; "Reduce effects" leaves it off). Both

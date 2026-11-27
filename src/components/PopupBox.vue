@@ -4,6 +4,9 @@
 // window losing focus. Up and down arrows move between its buttons.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+// A <Teleport> root gets no attributes by itself: put the caller's class and style on the box.
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(
   defineProps<{
     x: number
@@ -74,7 +77,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div ref="box" class="tk-menu popup" :role="role" :aria-label="label" :style="{ left: `${pos.left}px`, top: `${pos.top}px` }" @keydown="onKeydown">
+    <div ref="box" v-bind="$attrs" class="tk-menu popup" :role="role" :aria-label="label" :style="{ left: `${pos.left}px`, top: `${pos.top}px` }" @keydown="onKeydown">
       <slot />
     </div>
   </Teleport>

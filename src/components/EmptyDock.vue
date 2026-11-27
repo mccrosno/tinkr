@@ -1,15 +1,25 @@
 <script setup lang="ts">
 // What the dock shows when no panel is on screen (all closed or hidden): a quiet
 // message and a few ways back in.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { timeAgo } from '../chat/dates'
 import { useChat } from '../stores/chat'
 import { usePlugins } from '../stores/plugins'
 import AppLogo from './AppLogo.vue'
+import PanelList from './PanelList.vue'
 
 const chat = useChat()
 const plugins = usePlugins()
 const last = computed(() => chat.lastChat)
+
+const allButton = ref<HTMLButtonElement>()
+const list = ref<{ x: number; y: number } | null>(null)
+function toggleList() {
+  if (list.value) return void (list.value = null)
+  const r = allButton.value!.getBoundingClientRect()
+  // Over the rows it came from; the popup moves itself up if there's no room below.
+  list.value = { x: r.left + (r.width - 300) / 2, y: r.bottom + 4 }
+}
 
 const run = (command: string, ...args: unknown[]) => plugins.executeCommand(command, ...args).catch(() => {}) // failures are logged to the Console
 </script>
@@ -38,6 +48,8 @@ const run = (command: string, ...args: unknown[]) => plugins.executeCommand(comm
           <span class="when">{{ timeAgo(last.lastModified) }}</span>
         </button>
         <button type="button" data-empty="open-folder" @click="run('workspace.openFolder')"><span>Open folder…</span><kbd>Ctrl+O</kbd></button>
+        <button ref="allButton" type="button" data-empty="all-panels" aria-haspopup="dialog" :aria-expanded="!!list" @click="toggleList"><span>All panels</span></button>
+        <PanelList v-if="list" v-bind="list" :anchor="allButton" @close="list = null" />
       </div>
     </div>
   </div>

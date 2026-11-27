@@ -30,7 +30,7 @@ function open(id: PanelId) {
 </script>
 
 <template>
-  <PopupBox class="panel-list" role="dialog" label="All panels" :x="x" :y="y" :anchor="anchor" @close="emit('close')">
+  <PopupBox class="panel-list" style="width: 300px" role="dialog" label="All panels" :x="x" :y="y" :anchor="anchor" @close="emit('close')">
     <div class="tk-menu-title">All panels</div>
     <div v-for="p in rows" :key="p.id" class="row" :data-panel-item="p.id">
       <button type="button" class="tk-menu-item open" :disabled="!p.enabled" @click="open(p.id)">
@@ -52,7 +52,6 @@ function open(id: PanelId) {
 </template>
 
 <style scoped>
-.panel-list { width: 300px; }
 .row { display: flex; align-items: center; gap: 4px; }
 .open { flex: 1; min-width: 0; justify-content: flex-start; gap: 10px; padding-block: 5px; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; }

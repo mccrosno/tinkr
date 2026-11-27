@@ -1,17 +1,19 @@
 <script setup lang="ts">
 // The ⋯ button in a panel card's header: what dragging the tab can do, without
-// dragging, and closing the panel. Acts on the card's front tab.
+// dragging, pinning the panel to the rail, and closing it. Acts on the card's front tab.
 import type { DockviewGroupPanel } from 'dockview-vue'
 import { ref } from 'vue'
 import { UI_ICONS } from '../builtins/icons'
 import { useLayout } from '../stores/layout'
 import { usePlugins } from '../stores/plugins'
+import { useRail } from '../stores/rail'
 import AppIcon from './AppIcon.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 
 const props = defineProps<{ group: DockviewGroupPanel }>()
 const layout = useLayout()
 const plugins = usePlugins()
+const rail = useRail()
 const button = ref<HTMLButtonElement>()
 const menu = ref<{ x: number; y: number; title: string; items: MenuItem[] } | null>(null)
 
@@ -28,7 +30,8 @@ function toggle() {
   for (const [i, edge] of (['left', 'right', 'bottom'] as const).entries()) {
     items.push({ label: `Move to the ${edge} edge`, separator: i === 0 && items.length > 0, run: () => layout.toEdge(id, edge) })
   }
-  items.push({ label: 'Close panel', separator: true, run: () => layout.close(id) })
+  items.push({ label: `${rail.isPinned(id) ? 'Unpin from' : 'Pin to'} the side bar`, separator: true, run: () => rail.togglePin(id) })
+  items.push({ label: 'Close panel', run: () => layout.close(id) })
   const r = button.value!.getBoundingClientRect()
   // Right-aligned under the button; the menu moves itself back on screen if needed.
   menu.value = { x: r.right - 200, y: r.bottom + 4, title: plugins.panels.get(id)?.title ?? id, items }

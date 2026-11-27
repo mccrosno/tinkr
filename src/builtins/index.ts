@@ -1,8 +1,7 @@
 // Tinkr's built-in plugins: the Chat, Chats, Files, Editor and Terminal panels, the
-// Console and Plugins panels, and "core" (the app's commands, shortcuts and titlebar
-// buttons). They use the same `TinkrApi` as plugins on disk (SPEC.md: built-ins are
-// plugins); the only difference is that they're compiled in and keep bare ids
-// ("chat", not "chat.chat").
+// Console and Plugins panels, and "core" (the app's commands and shortcuts). They use
+// the same `TinkrApi` as plugins on disk (SPEC.md: built-ins are plugins); the only
+// difference is that they're compiled in and keep bare ids ("chat", not "chat.chat").
 
 import type { TinkrApi } from '../plugins/api'
 import type { BuiltInPlugin } from '../plugins/loader'

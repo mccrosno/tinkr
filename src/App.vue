@@ -1,27 +1,21 @@
 <script setup lang="ts">
-// The window's shell: the titlebar, the rail of pinned panels and the docking area.
+// The window's shell: the title bar, the rail of pinned panels and the docking area.
 // Everything inside comes from plugins (SPEC.md "Plugin system"): the panels (Chat, Chats, Files, Editor,
 // Terminal, Console, Plugins) and the titlebar/statusbar buttons are registered by
 // Tinkr's built-in plugins (src/builtins) through the same API as plugins on disk.
 // Keyboard shortcuts are command keybindings, so plugins can add their own.
 import { onBeforeUnmount, onMounted } from 'vue'
-import { UI_ICONS } from './builtins/icons'
-import ActionSlot from './components/ActionSlot.vue'
-import AgentButton from './components/AgentButton.vue'
-import AppIcon from './components/AppIcon.vue'
 import BackgroundLayer from './components/BackgroundLayer.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import DockLayout from './components/DockLayout.vue'
-import LayoutMenu from './components/LayoutMenu.vue'
 import PanelRail from './components/PanelRail.vue'
+import TitleBar from './components/TitleBar.vue'
 import Toasts from './components/Toasts.vue'
 import { useLayout } from './stores/layout'
 import { usePlugins } from './stores/plugins'
 import { useRail } from './stores/rail'
 import { useSettings } from './stores/settings'
-import { useWorkspace } from './stores/workspace'
 
-const ws = useWorkspace()
 const layout = useLayout()
 const plugins = usePlugins()
 const rail = useRail()
@@ -57,29 +51,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="app">
     <BackgroundLayer />
-    <header class="titlebar">
-      <strong>Tinkr</strong>
-      <button
-        type="button"
-        class="tk-icon-button"
-        :aria-pressed="!rail.collapsed"
-        :aria-label="rail.collapsed ? 'Show the side bar' : 'Hide the side bar'"
-        :title="`${rail.collapsed ? 'Show' : 'Hide'} the side bar (Ctrl+Shift+B)`"
-        data-testid="rail-toggle"
-        @click="rail.toggleCollapsed()"
-      >
-        <AppIcon :icon="{ path: UI_ICONS.rail }" />
-      </button>
-      <!-- The rail's buttons, while it's collapsed. -->
-      <template v-if="rail.collapsed">
-        <AgentButton side="below" />
-        <ActionSlot slot-name="statusbar" />
-      </template>
-      <span v-if="ws.name" class="project" :title="ws.root ?? ''">{{ ws.name }}</span>
-      <span class="spacer" />
-      <ActionSlot slot-name="titlebar" />
-      <LayoutMenu />
-    </header>
+    <TitleBar />
 
     <main class="main" :class="{ collapsed: rail.collapsed }">
       <PanelRail v-if="!rail.collapsed" />
@@ -95,10 +67,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .app { display: flex; flex-direction: column; height: 100%; }
-.titlebar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tk-border); background: var(--tk-surface); }
-.project { color: var(--tk-text-muted); }
-.project::before { content: '/'; margin-right: 10px; color: var(--tk-border); }
-.spacer { flex: 1; }
 .main { flex: 1; min-height: 0; display: flex; padding: 0 6px 6px 0; }
 .main.collapsed { padding-left: 6px; }
 .dock-area { flex: 1; min-width: 0; }

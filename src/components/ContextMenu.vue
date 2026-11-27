@@ -5,6 +5,8 @@ import PopupBox from './PopupBox.vue'
 
 export interface MenuItem {
   label: string
+  /** Tooltip, if the label alone isn't enough (e.g. a folder's full path). */
+  title?: string
   /** Shown on the right, e.g. "Ctrl+L". */
   hint?: string
   disabled?: boolean
@@ -36,7 +38,7 @@ function choose(item: MenuItem) {
     <div v-if="title" class="tk-menu-title">{{ title }}</div>
     <template v-for="(item, i) in items" :key="i">
       <div v-if="item.separator" class="tk-menu-sep" role="separator" />
-      <button type="button" class="tk-menu-item" role="menuitem" :disabled="item.disabled" :title="item.label" @click="choose(item)">
+      <button type="button" class="tk-menu-item" role="menuitem" :disabled="item.disabled" :title="item.title ?? item.label" @click="choose(item)">
         <span class="label">{{ item.label }}</span>
         <kbd v-if="item.hint">{{ item.hint }}</kbd>
       </button>

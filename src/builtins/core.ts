@@ -1,6 +1,5 @@
-// The "core" built-in plugin: Tinkr's own commands and shortcuts, the title bar
-// buttons, and keeping the editor and terminal panels in step with their
-// stores. Registered through the plugin API like everything else, so a plugin can call
+// The "core" built-in plugin: Tinkr's own commands and shortcuts, and keeping the
+// editor and terminal panels in step with their stores. Registered through the plugin API like everything else, so a plugin can call
 // any of these commands (e.g. api.commands.execute('workspace.openFolder', path)).
 
 import { computed, watch } from 'vue'
@@ -27,7 +26,6 @@ function activate(api: TinkrApi) {
   const plugins = usePlugins()
   const rail = useRail()
   const command = api.commands.register
-  const action = api.actions.register
 
   // --- Keeping the dock and the stores in agreement ------------------------------
   // The editor and terminal stores say whether they want to be seen (a file was opened,
@@ -189,48 +187,6 @@ function activate(api: TinkrApi) {
       const dir = pluginsDir()
       if (dir) await revealItemInDir(dir)
     },
-  })
-
-  // --- Titlebar buttons -----------------------------------------------------------
-  const run = (id: string) => () => api.commands.execute(id)
-  action({ id: 'openFolder', slot: 'titlebar', order: 10, title: 'Open folder…', tooltip: 'Open folder (Ctrl+O)', run: run('workspace.openFolder') })
-  action({
-    id: 'sidebar',
-    slot: 'titlebar',
-    order: 20,
-    title: 'Sidebar',
-    tooltip: 'Show or hide Chats and Files (Ctrl+B)',
-    run: run('layout.toggleSidebar'),
-    isActive: sidebarShown,
-  })
-  action({
-    id: 'editor',
-    slot: 'titlebar',
-    order: 30,
-    title: 'Editor',
-    tooltip: 'Show or hide the editor (Ctrl+Shift+E)',
-    run: run('editor.toggle'),
-    isActive: () => editorWanted.value,
-    isEnabled: () => editor.tabs.length > 0,
-  })
-  action({
-    id: 'terminal',
-    slot: 'titlebar',
-    order: 40,
-    title: 'Terminal',
-    tooltip: 'Show or hide the terminal (Ctrl+`)',
-    run: run('terminal.toggle'),
-    isActive: () => terminalWanted.value,
-    isVisible: () => !!ws.root,
-  })
-  action({
-    id: 'newChat',
-    slot: 'titlebar',
-    order: 90,
-    title: 'New chat',
-    tooltip: 'New chat (Ctrl+N)',
-    run: run('chat.new'),
-    isEnabled: () => !chat.busy && chat.messages.length > 0,
   })
 }
 

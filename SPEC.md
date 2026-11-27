@@ -94,7 +94,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 3. Terminal. **Done** (see "Milestone 3 notes" below).
 4. Claude edits files, with review: file tools and permission requests in `AgentProvider`, live diffs with accept/reject/comment, the selection menu ("Ask Claude" / "Request changes"), and the chat-first layout (editor opens on demand). **Done** (see "Milestone 4 notes" below).
 5. Chat like Claude Desktop: conversation history (reopen and continue past chats), chats without a project folder, attachments (images and files), model and effort picker. **Done** (see "Milestone 5 notes" below).
-6. Docking layout + saved layouts ("Agent" chat-first default, "Editor").
+6. Docking layout + saved layouts ("Agent" chat-first default, "Editor"). **Done** (see "Milestone 6 notes" below).
 7. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
 8. Themes and backgrounds.
 9. In-app plugin authoring by Claude.
@@ -215,6 +215,21 @@ What shipped, and decisions made along the way:
 - **Focus fix:** the chat used to move focus to its input whenever a reply ended, even if the user had moved to the editor or terminal. It now does so only if focus was still in the chat.
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
+
+## Milestone 6 notes
+Docking and layout presets, with `dockview-vue` 8.10 (spike 2 used 8.9).
+
+- **Panels:** Chats, Files, Chat, Editor, Terminal, each a dock panel you can drag to split or stack. The chat has no close button (a `#tab-pinned` slot); the others can be closed and come back with their shortcuts.
+- **Content is created once.** Dockview rebuilds a panel's content when a layout is restored or a panel moves between layouts, which would lose the chat draft, the shells' screens and the editor's undo history. So each panel's dockview content is just an empty `PanelHost` box that registers itself in the layout store, and App.vue `<Teleport>`s the real component into it (or into a hidden "parking" box while the panel isn't in the layout). Changing a Teleport's target moves the DOM without remounting, so nothing is rebuilt. Checked in the e2e: a draft, an unsaved edit with its undo history and a shell's output all survive a preset switch.
+- **Hiding keeps the place.** Hiding a panel hides its whole group (`group.api.setVisible(false)`); dockview keeps its slot and saves the hidden flag in its JSON. A panel stacked in the chat's group is closed instead (the chat can't be hidden) and comes back at its home position. A group that comes back below a usable size (dockview squeezes hidden groups to its 100px minimum) gets its default size.
+- **Presets:** "Agent" (default): Chats and Files stacked on the left, the chat in the middle, the editor on the right when a file is open, the terminal along the bottom. "Editor": Files and Chats on the left, the editor in the middle, the chat on the right, the terminal under the editor. Each preset remembers its last arrangement (saved 300 ms after a change; a pending save is written when the window closes). "Reset" goes back to the preset's starting arrangement. "Save layout as…" (Layout menu) adds a preset whose start is the arrangement at the time; saved presets can be deleted. Ctrl+Alt+1..9 switch presets in menu order.
+- **Stores stay in charge of "wanted":** the editor and terminal stores still say whether they want to be seen (a file opened, Ctrl+`); App.vue shows or hides their panel. Closing a panel's tab in the dock sets the store back to hidden. After any preset is laid out, editor and terminal visibility is re-applied (an arrangement may include an editor with no file open).
+- **Shortcuts:** Ctrl+B hides or shows Chats and Files together; Ctrl+Shift+E the editor; Ctrl+` the terminal; Ctrl+Alt+<n> presets. Opening a folder yourself brings Files to the front.
+- **Theme:** `dockview-theme-tinkr` (src/styles/dock.css) maps dockview's `--dv-*` variables to Tinkr's `--tk-*` tokens; no colors of its own.
+- **Storage:** localStorage (`tinkr.layout.*`), like the old panel sizes. Settings move to JSON in the config folder with the settings API (Milestone 7).
+- **Gotchas:** `DockviewVue` doesn't pass `class` through (`inheritAttrs: false`), so the dock needs a wrapper with the size; without it dockview falls back to 100px and the saved layout gets squeezed. CDP can't return a Vue reactive proxy by value (it arrives as `{}`): e2e scripts read store objects as JSON.
+- **Not done yet:** panels can't be resized from the keyboard any more (the old splitters could; dockview's drag handles don't take focus). Floating and pop-out windows are left off for now.
+- **Tests:** unit tests for the layout store with a fake dock (first launch, restore, unusable saved layouts, switching, reset, save as/delete, toggle, the "applied" hook). `e2e/layout.e2e.ts` (free) drives the real window through presets, shortcuts, content surviving switches, hide/show sizes, a panel stacked with the chat, and saving/reloading/resetting/deleting a preset; it saves the user's layouts first and puts them back. The other e2e checks were updated for the dock, and now delete the chats they create and close their temporary folders (they used to leave both behind).
 
 ## Milestone 5 notes
 Desktop-style chat. A live spike first (SDK 0.3.331, CLI 2.1.332) showed the SDK covers all of it:

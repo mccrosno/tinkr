@@ -77,7 +77,7 @@ function openFolder() {
 
 <style scoped>
 .plugins { flex: 1; min-height: 0; display: flex; flex-direction: column; font-size: 13px; }
-.bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--tk-border); background: var(--tk-surface); }
+.bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--tk-border); }
 .hint { flex: 1; color: var(--tk-text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 12px 12px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tk-text-muted); margin: 12px 0 6px; }

@@ -50,8 +50,8 @@ function newTerminal() {
 </template>
 
 <style scoped>
-.terminal-panel { display: flex; flex-direction: column; min-height: 0; background: var(--tk-bg); }
-.bar { display: flex; align-items: stretch; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--tk-border); background: var(--tk-surface); font-size: 12.5px; }
+.terminal-panel { display: flex; flex-direction: column; min-height: 0; }
+.bar { display: flex; align-items: stretch; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--tk-border); font-size: 12.5px; }
 .tabs { display: flex; min-width: 0; overflow-x: auto; }
 .tab { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; color: var(--tk-text-muted); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
 .tab[aria-selected='true'] { color: var(--tk-text); border-bottom-color: var(--tk-accent); }

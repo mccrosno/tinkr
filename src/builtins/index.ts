@@ -45,7 +45,11 @@ export const BUILT_IN_PLUGINS: BuiltInPlugin[] = [
       location: 'left',
       icon: icon.chats,
       // A chat of another folder opens that folder first (asks about unsaved work).
-      mount: vueMount(ChatList, { onOpenElsewhere: (folder: string | null, id: string) => api.commands.execute('chat.openIn', folder, id) }),
+      mount: vueMount(ChatList, {
+        onNewChat: () => api.commands.execute('chat.new'),
+        onShowChat: () => api.layout.show('chat'),
+        onOpenElsewhere: (folder: string | null, id: string) => api.commands.execute('chat.openIn', folder, id),
+      }),
     })
   }),
   builtIn('files', 'Files', (api) => {

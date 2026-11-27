@@ -44,7 +44,7 @@ function activate(entry: DirEntry) {
 </template>
 
 <style scoped>
-.tree { height: 100%; display: flex; flex-direction: column; background: var(--tk-surface); font-size: 13px; min-width: 0; }
+.tree { height: 100%; display: flex; flex-direction: column; font-size: 13px; min-width: 0; }
 .header { display: flex; align-items: center; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--tk-border); }
 .title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon { background: none; border: 0; color: var(--tk-text-muted); font-size: 16px; line-height: 1; padding: 0 4px; border-radius: 4px; }

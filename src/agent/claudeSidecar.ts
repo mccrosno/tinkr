@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { parseLine, type SidecarEvent, type SidecarRequest } from '@shared/protocol'
-import type { AgentEvent, AgentProvider } from './types'
+import type { AgentEvent, AgentProvider, PermissionDecision } from './types'
 
 /** Map a sidecar protocol event to a provider-neutral event (null = nothing for the UI). */
 export function toAgentEvent(e: SidecarEvent): AgentEvent | null {
@@ -18,6 +18,12 @@ export function toAgentEvent(e: SidecarEvent): AgentEvent | null {
     case 'textDelta':
       return { type: 'text', turnId: e.turnId, text: e.text }
     case 'turnFinished':
+    case 'toolUse':
+    case 'toolResult':
+    case 'fileWillChange':
+    case 'fileChanged':
+    case 'permissionRequest':
+    case 'permissionCancelled':
       return e
     case 'error':
       return { type: 'log', message: `sidecar error: ${e.message}` }
@@ -79,6 +85,10 @@ export class ClaudeSidecarProvider implements AgentProvider {
 
   abort(turnId: string) {
     return this.request({ type: 'abort', turnId })
+  }
+
+  respondToPermission(requestId: string, decision: PermissionDecision) {
+    return this.request({ type: 'permissionResponse', requestId, decision })
   }
 
   async restart() {

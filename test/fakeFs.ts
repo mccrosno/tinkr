@@ -46,6 +46,10 @@ export class FakeFs implements FileSystem {
     this.writes.push(path)
     this.put(path, text)
   }
+  async remove(path: string) {
+    if (!this.files.delete(path)) throw new Error(`no such file: ${path}`)
+    this.writes.push(path)
+  }
   async size(path: string) {
     return new TextEncoder().encode(await this.readText(path)).length
   }

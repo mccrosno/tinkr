@@ -37,6 +37,8 @@ async function handle(line: string) {
       return agent.send(req.turnId, req.resumeSessionId, req.text, req.cwd)
     case 'abort':
       return agent.abort(req.turnId)
+    case 'permissionResponse':
+      return agent.respond(req.requestId, req.decision)
     default:
       return emit({ type: 'error', message: `unknown request type: ${(req as { type: string }).type}` })
   }

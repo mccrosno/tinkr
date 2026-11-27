@@ -1,5 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #app { margin: 0; height: 100%; }
+/* An app window, not a page: panels scroll themselves, the window never does. */
+body { overflow: hidden; }
 body {
   background: var(--tk-bg);
   color: var(--tk-text);

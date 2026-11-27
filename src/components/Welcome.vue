@@ -3,13 +3,15 @@ import { useWorkspace } from '../stores/workspace'
 import { baseName } from '../workspace/fs'
 
 const ws = useWorkspace()
+/** `compact`: the narrow sidebar version (the chat is the main area). */
+defineProps<{ compact?: boolean }>()
 defineEmits<{ open: [path?: string] }>()
 </script>
 
 <template>
-  <div class="welcome">
-    <h1>Open a folder to start</h1>
-    <p>Browse and edit files on the left, chat with Claude on the right.</p>
+  <div class="welcome" :class="{ compact }">
+    <h1>No folder open</h1>
+    <p>Open a folder so Claude can read and edit it, with every change shown for review. You can also just chat.</p>
     <button class="tk-button primary" @click="$emit('open')">Open folder…</button>
     <p v-if="ws.error" class="error">{{ ws.error }}</p>
     <section v-if="ws.recent.length" class="recent">
@@ -27,6 +29,10 @@ defineEmits<{ open: [path?: string] }>()
 
 <style scoped>
 .welcome { max-width: 520px; margin: 14vh auto 0; padding: 0 24px; text-align: center; }
+.welcome.compact { margin: 24px 0 0; padding: 0 14px; text-align: left; }
+.welcome.compact h1 { font-size: 15px; }
+.welcome.compact p { font-size: 13px; }
+.welcome.compact .link { flex-direction: column; gap: 0; }
 h1 { font-size: 20px; margin: 0 0 6px; }
 p { color: var(--tk-text-muted); margin: 0 0 16px; }
 .error { color: var(--tk-danger); margin-top: 12px; }

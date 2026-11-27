@@ -1,16 +1,14 @@
 // Runs Claude Agent SDK turns and reports them as protocol events.
 
 import { homedir } from 'node:os'
-import { query, type AccountInfo, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { AuthStatus, SidecarEvent, TurnOutcome } from '../../shared/protocol'
+import { resolve } from 'node:path'
+import { query, type AccountInfo, type CanUseTool, type HookCallback, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { AuthStatus, PermissionDecision, SidecarEvent, TurnOutcome } from '../../shared/protocol'
+import { EDIT_TOOLS, decide, describeTool, editTarget, forThisChat, isInside, permissionDetail, readBaseline } from './tools'
 
 export type Emit = (event: SidecarEvent) => void
 
-/**
- * Options shared by every SDK call.
- * Milestone 1 is chat only: no tools, so Claude can't touch files or run commands yet
- * (that arrives with the review model in Milestone 6).
- */
+/** Options shared by every SDK call (the login check uses only these). */
 function baseOptions(cliPath: string, cwd: string = homedir()): Options {
   return {
     pathToClaudeCodeExecutable: cliPath,
@@ -18,12 +16,16 @@ function baseOptions(cliPath: string, cwd: string = homedir()): Options {
     // the open project folder, or the home folder when none is open.
     cwd,
     tools: [],
-    // Don't load the user's or a project's Claude Code settings/CLAUDE.md into Tinkr chats.
     settingSources: [],
     // Recommended when passing our own CLI path (see SDK docs for this option).
     mcpServersDelivery: 'initialize',
   }
 }
+
+/** Added to Claude Code's own system prompt, so Claude knows where it's running. */
+export const TINKR_PROMPT = `You are running inside Tinkr, a desktop app where the chat is the main window and an editor sits beside it.
+- Your file edits are shown to the user as diffs, which they accept or reject piece by piece. Make focused edits rather than rewriting whole files.
+- The user's message may contain <selection file="..." lines="..." purpose="..."> blocks: code they selected in Tinkr's editor (paths relative to the project, 1-based line numbers). purpose="change" means edit that code in the file as they ask. purpose="question" means answer about it; only edit if they ask you to.`
 
 /** Turn the SDK's account info into Tinkr's auth status. */
 export function toAuthStatus(info: AccountInfo): AuthStatus {
@@ -56,9 +58,19 @@ interface RunningTurn {
   abort: () => void
 }
 
+/** A permission request waiting for the user's answer. */
+interface PendingPermission {
+  turnId: string
+  resolve: (answer: PermissionDecision | 'cancelled') => void
+}
+
 /** Runs turns; each one is a single `query()` call that resumes the conversation. */
 export class Agent {
   private running = new Map<string, RunningTurn>()
+  private permissions = new Map<string, PendingPermission>()
+  private nextPermission = 0
+  /** Edit tool calls we sent a baseline for: tool use id -> absolute path. */
+  private editsInFlight = new Map<string, string>()
 
   constructor(
     private cliPath: () => string | null,
@@ -88,7 +100,7 @@ export class Agent {
     const q = query({
       prompt: text,
       options: {
-        ...baseOptions(cliPath, cwd),
+        ...this.turnOptions(turnId, cliPath, cwd),
         includePartialMessages: true,
         abortController,
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
@@ -109,9 +121,29 @@ export class Agent {
           sessionId = m.session_id
           this.emit({ type: 'turnStarted', turnId, sessionId, model: m.model })
         } else if (m.type === 'stream_event') {
+          // Skip text from sub-agents (the Task tool): only Claude's own reply goes in the chat.
           const ev = m.event
-          if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+          if (m.parent_tool_use_id === null && ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
             this.emit({ type: 'textDelta', turnId, text: ev.delta.text })
+          }
+        } else if (m.type === 'assistant' && m.parent_tool_use_id === null) {
+          for (const block of m.message.content) {
+            if (block.type !== 'tool_use') continue
+            this.emit({ type: 'toolUse', turnId, toolUseId: block.id, name: block.name, summary: describeTool(block.name, block.input, cwd) })
+          }
+        } else if (m.type === 'user' && Array.isArray(m.message.content)) {
+          // Tool results come back as a "user" message. A result for an edit we took a
+          // baseline for means the edit is done (or failed): tell the UI to look at the file.
+          for (const block of m.message.content) {
+            if (block.type !== 'tool_result') continue
+            const edited = this.editsInFlight.get(block.tool_use_id)
+            if (edited) {
+              this.editsInFlight.delete(block.tool_use_id)
+              this.emit({ type: 'fileChanged', turnId, toolUseId: block.tool_use_id, path: edited })
+            }
+            if (m.parent_tool_use_id === null) {
+              this.emit({ type: 'toolResult', turnId, toolUseId: block.tool_use_id, isError: block.is_error === true })
+            }
           }
         } else if (m.type === 'result') {
           sessionId = m.session_id
@@ -127,10 +159,91 @@ export class Agent {
       finish(aborted ? 'aborted' : 'error', { message: aborted ? undefined : e instanceof Error ? e.message : String(e) })
     } finally {
       this.running.delete(turnId)
+      this.cancelPermissions(turnId)
     }
   }
 
   abort(turnId: string) {
     this.running.get(turnId)?.abort()
+    this.cancelPermissions(turnId)
+  }
+
+  /** The user answered a permission request. */
+  respond(requestId: string, decision: PermissionDecision) {
+    this.permissions.get(requestId)?.resolve(decision)
+  }
+
+  private cancelPermissions(turnId: string) {
+    for (const p of this.permissions.values()) if (p.turnId === turnId) p.resolve('cancelled')
+  }
+
+  /**
+   * Options for a chat turn: Claude Code's full toolset, the user's Claude Code
+   * settings and CLAUDE.md files, and Tinkr's permission policy (see `decide`).
+   * `project` is undefined when no folder is open; then Claude can't edit files.
+   */
+  private turnOptions(turnId: string, cliPath: string, project: string | undefined): Options {
+    // Permission requests: allow/deny by policy, or ask the user in the chat and wait.
+    const canUseTool: CanUseTool = async (toolName, input, { signal, suggestions }) => {
+      const policy = decide(toolName, input, project)
+      if (policy.kind === 'allow') return { behavior: 'allow', updatedInput: input }
+      if (policy.kind === 'deny') return { behavior: 'deny', message: policy.message }
+
+      const requestId = `${turnId}-p${++this.nextPermission}`
+      const answer = await new Promise<PermissionDecision | 'cancelled'>((resolveAnswer) => {
+        this.permissions.set(requestId, { turnId, resolve: resolveAnswer })
+        signal.addEventListener('abort', () => resolveAnswer('cancelled'), { once: true })
+        this.emit({
+          type: 'permissionRequest',
+          turnId,
+          requestId,
+          toolName,
+          summary: describeTool(toolName, input, project),
+          detail: permissionDetail(toolName, input),
+        })
+      })
+      this.permissions.delete(requestId)
+      if (answer === 'cancelled') {
+        this.emit({ type: 'permissionCancelled', requestId })
+        return { behavior: 'deny', message: 'The user stopped this turn.', interrupt: true }
+      }
+      if (answer === 'deny') return { behavior: 'deny', message: 'The user declined this in Tinkr.' }
+      return {
+        behavior: 'allow',
+        updatedInput: input,
+        ...(answer === 'allowForChat' ? { updatedPermissions: forThisChat(suggestions) } : {}),
+      }
+    }
+
+    // Before an edit tool runs, send the file's current text as the review baseline.
+    // (This hook runs before the permission check. If the edit is then denied, the file
+    // ends up unchanged and the UI has nothing to review.)
+    const beforeEdit: HookCallback = async (input) => {
+      if (input.hook_event_name !== 'PreToolUse' || !project) return {}
+      const target = editTarget(input.tool_name, input.tool_input)
+      if (!target) return {}
+      const path = resolve(project, target)
+      if (!isInside(path, project)) return {}
+      const before = await readBaseline(path)
+      if (before === undefined) return {} // can't be diffed, so it isn't reviewed
+      this.editsInFlight.set(input.tool_use_id, path)
+      this.emit({ type: 'fileWillChange', turnId, toolUseId: input.tool_use_id, path, before })
+      return {}
+    }
+
+    return {
+      ...baseOptions(cliPath, project),
+      tools: { type: 'preset', preset: 'claude_code' },
+      // Without a project there's nowhere to review edits, so leave the edit tools out.
+      disallowedTools: project ? [] : [...EDIT_TOOLS],
+      // Load the user's Claude Code settings and CLAUDE.md files, as the CLI would.
+      settingSources: ['user', 'project', 'local'],
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: TINKR_PROMPT },
+      // "default" sends everything that isn't clearly safe to `canUseTool`, which
+      // applies Tinkr's policy. Read-only tools and safe commands never get there.
+      permissionMode: 'default',
+      canUseTool,
+      hooks: { PreToolUse: [{ matcher: [...EDIT_TOOLS].join('|'), hooks: [beforeEdit] }] },
+    }
   }
 }

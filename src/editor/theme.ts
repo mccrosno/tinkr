@@ -21,6 +21,43 @@ const chrome = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--tk-surface)', color: 'var(--tk-text)', borderColor: 'var(--tk-border)' },
   '.cm-tooltip': { backgroundColor: 'var(--tk-surface)', border: '1px solid var(--tk-border)' },
   '.cm-foldPlaceholder': { backgroundColor: 'var(--tk-surface-2)', border: 'none', color: 'var(--tk-text-muted)' },
+
+  // Review diffs (@codemirror/merge's unified view): Claude's new lines are "changed
+  // lines"; the text they replaced is shown above them as a read-only "deleted chunk".
+  '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': { backgroundColor: 'var(--tk-diff-added-bg)' },
+  '&.cm-merge-b .cm-changedText': { background: 'var(--tk-diff-added-strong)' },
+  '.cm-deletedChunk': { backgroundColor: 'var(--tk-diff-removed-bg)', paddingLeft: '6px' },
+  '.cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': { background: 'var(--tk-diff-removed-strong)' },
+  '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--tk-ok)' },
+  '.cm-deletedLineGutter': { background: 'var(--tk-danger)' },
+  '.cm-chunkButtons': { position: 'absolute', insetInlineEnd: '8px', display: 'flex', gap: '4px', zIndex: '2' },
+  // `& ` adds the editor's own class, so these beat the merge package's built-in colors.
+  '& .cm-chunkButtons button': {
+    font: '12px var(--tk-font)',
+    padding: '1px 8px',
+    borderRadius: 'var(--tk-radius-sm)',
+    border: '1px solid var(--tk-border)',
+    background: 'var(--tk-surface)',
+    color: 'var(--tk-text)',
+    cursor: 'pointer',
+  },
+  '& .cm-chunkButtons button[name=accept]': { borderColor: 'var(--tk-ok)', color: 'var(--tk-ok)', background: 'var(--tk-surface)' },
+  '& .cm-chunkButtons button[name=reject]': { borderColor: 'var(--tk-danger)', color: 'var(--tk-danger)', background: 'var(--tk-surface)' },
+
+  // The "Ask Claude / Request changes" popup next to a selection.
+  // (CodeMirror wraps it in `.cm-tooltip`, which draws the border and background.)
+  '.cm-tooltip:has(> .cm-ask-claude)': { borderRadius: 'var(--tk-radius-sm)', boxShadow: 'var(--tk-shadow)' },
+  '.cm-ask-claude': { display: 'flex', gap: '2px', padding: '2px' },
+  '.cm-ask-claude button': {
+    font: '12px var(--tk-font)',
+    padding: '2px 8px',
+    border: '0',
+    borderRadius: 'var(--tk-radius-sm)',
+    background: 'transparent',
+    color: 'var(--tk-text)',
+    cursor: 'pointer',
+  },
+  '.cm-ask-claude button:hover': { background: 'var(--tk-surface-2)', color: 'var(--tk-accent)' },
 })
 
 const highlight = HighlightStyle.define([

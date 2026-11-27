@@ -80,7 +80,7 @@ function onKeydown(e: KeyboardEvent) {
 
 <style scoped>
 .backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: color-mix(in srgb, var(--tk-bg) 40%, transparent); }
-.palette { width: min(560px, 90vw); background: var(--tk-surface); border: 1px solid var(--tk-border); border-radius: var(--tk-radius); box-shadow: var(--tk-shadow); overflow: hidden; }
+.palette { width: min(560px, 90vw); background: var(--tk-popup); border: 1px solid var(--tk-border); border-radius: var(--tk-radius); box-shadow: var(--tk-shadow); overflow: hidden; }
 input { width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--tk-border); background: var(--tk-bg); outline: none; font-size: 14px; }
 ul { list-style: none; margin: 0; padding: 4px; max-height: 50vh; overflow: auto; }
 li { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: var(--tk-radius-sm); cursor: pointer; }

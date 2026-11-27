@@ -19,7 +19,7 @@ const chrome = EditorView.theme({
   '.cm-matchingBracket': { outline: '1px solid var(--tk-border)', backgroundColor: 'transparent' },
   '.cm-searchMatch': { backgroundColor: 'var(--tk-selection)', outline: '1px solid var(--tk-accent)' },
   '.cm-panels': { backgroundColor: 'var(--tk-surface)', color: 'var(--tk-text)', borderColor: 'var(--tk-border)' },
-  '.cm-tooltip': { backgroundColor: 'var(--tk-surface)', border: '1px solid var(--tk-border)' },
+  '.cm-tooltip': { backgroundColor: 'var(--tk-popup)', border: '1px solid var(--tk-border)' },
   '.cm-foldPlaceholder': { backgroundColor: 'var(--tk-surface-2)', border: 'none', color: 'var(--tk-text-muted)' },
 
   // Review diffs (@codemirror/merge's unified view): Claude's new lines are "changed

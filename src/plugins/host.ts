@@ -1,7 +1,7 @@
 // Builds the `TinkrApi` object a plugin's `activate` receives. Each plugin gets its own:
 // ids it registers are prefixed with its name (built-ins keep bare ids), everything it
-// registers is tracked so unloading removes it, and the "agent", "fs" and "pty" parts
-// only work if plugin.json asks for them.
+// registers is tracked so unloading removes it, and the "agent", "fs", "pty" and
+// "run:<program>" parts only work if plugin.json asks for them.
 
 import type { AgentEvent } from '../agent/types'
 import { useChat } from '../stores/chat'
@@ -13,7 +13,8 @@ import { useSettings } from '../stores/settings'
 import { useTerminal } from '../stores/terminal'
 import { useWorkspace } from '../stores/workspace'
 import { joinPath, relativeTo, samePath, tauriFs, type FileSystem } from '../workspace/fs'
-import type { Disposable, Permission, PluginManifest, TinkrApi } from './api'
+import type { Disposable, Permission, PluginManifest, ProgramsApi, TinkrApi } from './api'
+import { tauriRunner, type ProgramRunner } from './programs'
 
 /** What `createApi` needs to know about the plugin. */
 export interface PluginIdentity {
@@ -48,7 +49,7 @@ function isInside(path: string, root: string) {
   return samePath(path, root) || relativeTo(root, path) !== path
 }
 
-export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): PluginHandle {
+export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs, runner: ProgramRunner = tauriRunner): PluginHandle {
   const registry = usePlugins()
   const disposables: Disposable[] = []
   const track = (d: Disposable) => (disposables.push(d), d)
@@ -79,6 +80,19 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
     const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path) ? path : joinPath(root, root.includes('\\') ? path.replaceAll('/', '\\') : path)
     if (!isInside(absolute, root)) throw new Error(`${path} is outside the open folder`)
     return absolute
+  }
+
+  const runProgram: ProgramsApi['run'] = async (program, args = [], options = {}) => {
+    if (!plugin.builtIn && !granted.has(`run:${program}`)) {
+      throw new Error(`api.programs.run('${program}') needs "run:${program}" in the "permissions" list of ${plugin.name}/plugin.json`)
+    }
+    return runner({
+      program,
+      args,
+      cwd: options.cwd === undefined ? null : projectPath(options.cwd),
+      input: options.input ?? null,
+      timeoutMs: options.timeoutMs ?? 30_000,
+    })
   }
 
   /** A URL for a file in the plugin's folder (built-ins pass URLs already). */
@@ -173,6 +187,8 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
         t.write(t.activeKey, text)
       },
     }),
+
+    programs: { run: runProgram },
 
     settings: {
       get: (key, fallback) => useSettings().pluginValue(plugin.name, key, fallback),

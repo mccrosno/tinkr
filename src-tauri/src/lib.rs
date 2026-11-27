@@ -1,5 +1,6 @@
 mod config;
 mod plugins;
+mod programs;
 mod pty;
 mod sidecar;
 
@@ -72,6 +73,7 @@ pub fn run() {
             config::open_project,
             config::close_project,
             plugins::plugins_dir_path,
+            programs::run_program,
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,

@@ -85,6 +85,35 @@ beforeEach(async () => {
   await chat.connect(fake)
 })
 
+describe('the working indicator', () => {
+  const label = () => chat.activity?.label
+
+  test('follows a turn from step to step, and goes away when it ends', async () => {
+    expect(chat.activity).toBeNull()
+    await chat.send('go')
+    expect(label()).toBe('Thinking…')
+    fake.emit({ type: 'text', turnId: 'turn1', text: 'Let me look.' })
+    expect(label()).toBe('Working…')
+    fake.emit({ type: 'toolUse', turnId: 'turn1', toolUseId: 'u1', name: 'Bash', summary: 'ls' })
+    expect(label()).toBe('Running a command…')
+    fake.emit({ type: 'toolResult', turnId: 'turn1', toolUseId: 'u1', isError: false })
+    expect(label()).toBe('Thinking…') // between steps
+    fake.emit({ type: 'toolUse', turnId: 'turn1', toolUseId: 'u2', name: 'mcp__other__thing', summary: '' })
+    expect(label()).toBe('Using mcp__other__thing…')
+    fake.emit({ type: 'turnFinished', turnId: 'turn1', sessionId: 's1', outcome: 'success', durationMs: 1 })
+    expect(chat.activity).toBeNull()
+  })
+
+  test('says when it is waiting for the user', async () => {
+    await chat.send('go')
+    fake.emit({ type: 'toolUse', turnId: 'turn1', toolUseId: 'u1', name: 'Bash', summary: 'npm i' })
+    fake.emit({ type: 'permissionRequest', turnId: 'turn1', requestId: 'p1', toolName: 'Bash', summary: 'npm i' })
+    expect(chat.activity).toEqual({ label: 'Waiting for your answer', waiting: true })
+    await chat.respondToPermission('p1', 'allow')
+    expect(chat.activity).toEqual({ label: 'Running a command…', waiting: false })
+  })
+})
+
 describe('plugin authoring', () => {
   const tick = () => new Promise((r) => setTimeout(r, 0))
 

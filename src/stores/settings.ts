@@ -3,7 +3,8 @@
 // settings. Read once at startup; changes are written 300 ms after the last one.
 //
 // Shape: { "app": { "<key>": <json> },                       Tinkr's own (e.g. the theme)
-//          "plugins": { "approved": { "<name>": true|false } },
+//          "plugins": { "approved": { "<name>": true|false },
+//                       "programs": { "<name>": ["gh"] } },  programs it may run
 //          "plugin": { "<name>": { "<key>": <json> } } }        each plugin's own
 
 import { defineStore } from 'pinia'
@@ -12,7 +13,7 @@ import type { FileSystem } from '../workspace/fs'
 
 interface SettingsFile {
   app?: Record<string, unknown>
-  plugins?: { approved?: Record<string, boolean> }
+  plugins?: { approved?: Record<string, boolean>; programs?: Record<string, string[]> }
   plugin?: Record<string, Record<string, unknown>>
 }
 
@@ -63,11 +64,22 @@ export const useSettings = defineStore('settings', () => {
     return data.value.plugins?.approved?.[plugin] ?? null
   }
 
-  function setApproval(plugin: string, approved: boolean) {
+  /** `programs`, if given, replaces the list of programs the user let the plugin run. */
+  function setApproval(plugin: string, approved: boolean, programs?: string[]) {
     data.value.plugins ??= {}
     data.value.plugins.approved ??= {}
     data.value.plugins.approved[plugin] = approved
+    if (programs) {
+      data.value.plugins.programs ??= {}
+      if (programs.length) data.value.plugins.programs[plugin] = [...programs]
+      else delete data.value.plugins.programs[plugin]
+    }
     scheduleWrite()
+  }
+
+  /** The programs the user agreed the plugin may run. */
+  function approvedPrograms(plugin: string): string[] {
+    return data.value.plugins?.programs?.[plugin] ?? []
   }
 
   function pluginValue<T>(plugin: string, key: string, fallback: T): T {
@@ -107,9 +119,10 @@ export const useSettings = defineStore('settings', () => {
   /** Drop everything stored about a plugin (its approval and its settings), e.g. when it's uninstalled. */
   function forgetPlugin(plugin: string) {
     delete data.value.plugins?.approved?.[plugin]
+    delete data.value.plugins?.programs?.[plugin]
     delete data.value.plugin?.[plugin]
     scheduleWrite()
   }
 
-  return { data, loaded, error, load, flush, approval, setApproval, forgetPlugin, appValue, setAppValue, pluginValue, setPluginValue, onPluginValueChange }
+  return { data, loaded, error, load, flush, approval, setApproval, approvedPrograms, forgetPlugin, appValue, setAppValue, pluginValue, setPluginValue, onPluginValueChange }
 })

@@ -29,6 +29,11 @@ export type Permission =
   | 'pty'
   /** Talk to Claude: send messages, add references, read the conversation (`api.agent`). */
   | 'agent'
+  /**
+   * Run one program, e.g. "run:gh" (`api.programs`). One entry per program, by bare
+   * name. The user is asked to approve each program, with any arguments.
+   */
+  | `run:${string}`
 
 /** The contents of plugin.json. */
 export interface PluginManifest {
@@ -247,6 +252,40 @@ export interface TerminalApi {
   sendText(text: string): Promise<void>
 }
 
+/** What a finished program left behind. */
+export interface ProgramResult {
+  /** The exit code (0 usually means success); null if the system ended it without one. */
+  code: number | null
+  stdout: string
+  stderr: string
+  /** True if an output was over 10 MB and got cut off. */
+  truncated: boolean
+}
+
+/** Running programs installed on the computer. Needs "run:<program>" for each one. */
+export interface ProgramsApi {
+  /**
+   * Run a program and wait for it to end. It's started directly, not through a shell:
+   * each item of `args` is one argument exactly as written (no quoting, pipes or
+   * `&&`). It runs as the user, so it uses their logins (`gh`, `git`, `az`...). On
+   * Windows only .exe files are found by bare name (use "npm.cmd" for a .cmd one).
+   *
+   * Resolves for any exit code. Rejects if it couldn't start or took too long.
+   */
+  run(
+    program: string,
+    args?: string[],
+    options?: {
+      /** Folder to run in: the open folder or one inside it. Default: the home folder. */
+      cwd?: string
+      /** Text for the program's standard input. */
+      input?: string
+      /** Stop it after this long. Default 30000, at most 600000. */
+      timeoutMs?: number
+    },
+  ): Promise<ProgramResult>
+}
+
 export interface LayoutApi {
   /** Show a panel (bringing it to the front), hide it, or switch between the two. Ids as given to `panels.register` (prefixed for plugins). */
   show(panelId: string): void
@@ -308,6 +347,8 @@ export interface TinkrApi {
   agent: AgentApi
   /** Throws unless plugin.json lists "pty" in `permissions`. */
   terminal: TerminalApi
+  /** `run` rejects unless plugin.json lists "run:<program>" in `permissions`. */
+  programs: ProgramsApi
   settings: SettingsApi
   notifications: NotificationsApi
   log: LogApi

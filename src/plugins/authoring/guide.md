@@ -90,7 +90,12 @@ export function activate(api) {
   types. There is no Node.js: no `fs`, `path`, `process` or `require`.
 - **Use the API for the app.** Files, Claude, the terminal, settings and notifications go
   through `api`. `api.agent` needs `"agent"` in `permissions`, `api.terminal` needs `"pty"`,
-  and file access through `api.workspace` needs `"fs"`. Ask only for what the plugin uses.
+  file access through `api.workspace` needs `"fs"`, and `api.programs.run('gh', ...)` needs
+  `"run:gh"` (one entry per program). Ask only for what the plugin uses.
+- **To use a service the user is signed in to, run its command-line tool** with
+  `api.programs` (`gh` for GitHub, `az`, `git`...) rather than asking them to paste a token.
+  The user approves each program in a dialog, and is asked again if you add one.
+  `api.terminal` can only type into a terminal; it can't read what comes back.
 - **Ids** you register are prefixed with the plugin name: panel `panel` in `notes` is
   `notes.panel`. Pass the full id to `api.layout.show`.
 - **Reloads must leave nothing behind.** Everything registered through `api` is removed for

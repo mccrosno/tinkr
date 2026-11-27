@@ -30,7 +30,7 @@ Webview (Vue core + plugins) <-- Tauri IPC/events --> Rust core <-- stdio JSON l
 | Terminal | xterm.js + `portable-pty` |
 | Agent | Claude Agent SDK in a compiled Bun sidecar |
 
-The Rust core stays thin: window and config, sidecar management, file watching, PTY, and host API permissions. Everything else lives in TypeScript.
+The Rust core stays thin: window and config, sidecar management, file watching, PTY, and the host API (permissions, running programs for plugins). Everything else lives in TypeScript.
 
 ## Writing a plugin
 
@@ -59,7 +59,7 @@ export function activate(api) {
 }
 ```
 
-Plugins add panels, commands (with keybindings, listed in the command palette, Ctrl+Shift+P), buttons in the title bar, side bar, message box or the selection menu, and layout presets. The host API covers the open folder's files, the editor, Claude, the terminal, settings and notifications; see [`src/plugins/api.ts`](src/plugins/api.ts) for all of it, and [`examples/plugins/word-count`](examples/plugins/word-count) for a working example. Save a file and the plugin reloads; errors show in the Console panel, with a button to hand them to Claude.
+Plugins add panels, commands (with keybindings, listed in the command palette, Ctrl+Shift+P), buttons in the title bar, side bar, message box or the selection menu, and layout presets. The host API covers the open folder's files, the editor, Claude, the terminal, running programs you approve (so a plugin can use your `gh` login, say), settings and notifications; see [`src/plugins/api.ts`](src/plugins/api.ts) for all of it, and [`examples/plugins/word-count`](examples/plugins/word-count) for a working example. Save a file and the plugin reloads; errors show in the Console panel, with a button to hand them to Claude.
 
 A theme can be a plugin with no code: list JSON files in `plugin.json` (`"themes": ["mytheme.json"]`), each with a `kind` (`dark` or `light`), the colors to change (`tokens`, e.g. `"accent": "#3fb0c9"`), and optionally a background picture (PNG, JPEG, WebP, GIF or SVG, animated ones too), how see-through the panels are over it, blur, and a CSS file. See [`examples/plugins/harbor-theme`](examples/plugins/harbor-theme).
 
@@ -99,7 +99,7 @@ Layout:
 | Path | What |
 |---|---|
 | `src/` | Vue UI: `agent/` (the `AgentProvider` interface and the Claude implementation), `stores/` (app state), `plugins/` (the plugin API and loader), `builtins/` (the built-in plugins), `layout/` (the dock), `theme/`, `chat/`, `editor/` (CodeMirror languages and theme), `terminal/` (PTY access and xterm.js colors), `workspace/` (file access), `components/` |
-| `src-tauri/` | Rust core: window/config (open project, recent folders), the sidecar manager, the PTY (terminal shells), and the plugins folder |
+| `src-tauri/` | Rust core: window/config (open project, recent folders), the sidecar manager, the PTY (terminal shells), the plugins folder, and running programs for plugins |
 | `sidecar/` | Bun process that drives the Claude Agent SDK |
 | `shared/protocol.ts` | The JSON-lines messages between UI and sidecar |
 | `examples/plugins/` | A working example plugin and an example theme |

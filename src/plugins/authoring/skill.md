@@ -102,6 +102,20 @@ hand: ask the user to arrange the panels, run "Layout: copy as JSON" and paste i
 api.layout.registerPreset({ id: 'writing', name: 'Writing', layout: savedJson })
 ```
 
+## Running programs
+
+`plugin.json` needs one `"run:<program>"` entry for each, e.g. `"permissions": ["run:gh"]`.
+
+```js
+const r = await api.programs.run('gh', ['api', 'user'])
+if (r.code !== 0) throw new Error(r.stderr.trim() || `gh exited with ${r.code}`)
+const user = JSON.parse(r.stdout)
+```
+
+There's no shell: each array item is one argument exactly as written. It runs in the home
+folder unless you pass `{ cwd: api.workspace.root() }`; `input` and `timeoutMs` are the
+other options. It rejects if the program isn't installed or takes too long.
+
 ## Using the app
 
 ```js

@@ -2,7 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { createPinia, setActivePinia } from 'pinia'
 import type { PluginManifest, PluginModule, TinkrApi } from '../src/plugins/api'
 import { pluginFileUrl } from '../src/plugins/diskSource'
+import { approvalPrompt, programsOf, type ApprovalRequest } from '../src/plugins/approval'
 import { createApi } from '../src/plugins/host'
+import type { ProgramRequest } from '../src/plugins/programs'
 import { PluginLoader, type PluginSource } from '../src/plugins/loader'
 import { keybindingOf, normalizeKeybinding, usePlugins } from '../src/stores/plugins'
 import { useSettings } from '../src/stores/settings'
@@ -370,6 +372,90 @@ describe('the plugin API', () => {
       },
     })
     expect((registry.panels.get('notes.bad')!.el as unknown as FakeElement).textContent).toMatch(/failed to start: nope/)
+  })
+})
+
+describe('running programs', () => {
+  const ran: ProgramRequest[] = []
+  const withPrograms = (permissions: PluginManifest['permissions']) =>
+    createApi({ name: 'gh', manifest: { name: 'gh', permissions }, dir: null, builtIn: false }, new FakeFs({}), async (request) => {
+      ran.push(request)
+      return { code: 0, stdout: 'ok', stderr: '', truncated: false }
+    }).api
+
+  beforeEach(() => {
+    ran.length = 0
+  })
+
+  test('only the programs listed in plugin.json can be run', async () => {
+    const api = withPrograms(['run:gh', 'pty'])
+    expect((await api.programs.run('gh', ['api', 'user'])).stdout).toBe('ok')
+    expect(ran).toEqual([{ program: 'gh', args: ['api', 'user'], cwd: null, input: null, timeoutMs: 30_000 }])
+    await expect(api.programs.run('git', ['status'])).rejects.toThrow(/needs "run:git" in the "permissions" list of gh\/plugin.json/)
+    expect(ran).toHaveLength(1)
+  })
+
+  test('a folder to run in must be inside the open folder', async () => {
+    const api = withPrograms(['run:git'])
+    useWorkspace().root = '/proj'
+    await api.programs.run('git', [], { cwd: 'sub', input: 'text', timeoutMs: 5 })
+    expect(ran[0]).toMatchObject({ cwd: '/proj/sub', input: 'text', timeoutMs: 5 })
+    await expect(api.programs.run('git', [], { cwd: '/elsewhere' })).rejects.toThrow(/outside the open folder/)
+  })
+
+  test('the programs are read from the manifest, and a bad permissions value is ignored', () => {
+    expect(programsOf({ name: 'p', permissions: ['fs', 'run:gh', 'run:az'] })).toEqual(['gh', 'az'])
+    expect(programsOf({ name: 'p', permissions: 'run:gh' as unknown as [] })).toEqual([])
+  })
+
+  test('approval names the programs, and is asked again when a plugin wants another', async () => {
+    const requests: ApprovalRequest[] = []
+    let agree = true
+    loader = new PluginLoader(source, async (_, __, request) => (requests.push(request), agree), 5)
+    let activated = 0
+    const module = { activate: () => void activated++ }
+    source.add('prs', module, { permissions: ['run:gh'] })
+    await boot()
+    expect(requests).toEqual([{ programs: ['gh'], again: false }])
+    expect(useSettings().approvedPrograms('prs')).toEqual(['gh'])
+
+    await loader.reload('prs') // nothing new: no question
+    expect(requests).toHaveLength(1)
+
+    source.add('prs', module, { permissions: ['run:gh', 'run:git'] })
+    agree = false
+    await loader.reload('prs')
+    expect(requests[1]).toEqual({ programs: ['git'], again: true })
+    expect(registry.record('prs')?.state).toBe('disabled')
+    expect(activated).toBe(2) // the new version never ran
+    expect(useSettings().approvedPrograms('prs')).toEqual(['gh'])
+
+    agree = true
+    await loader.setEnabled('prs', true) // turning it on asks again, rather than agreeing for the user
+    expect(requests[2]).toEqual({ programs: ['git'], again: true })
+    expect(registry.record('prs')?.state).toBe('active')
+    expect(useSettings().approvedPrograms('prs')).toEqual(['gh', 'git'])
+  })
+
+  test('a plugin turned on before it asked for programs is asked at the next start, not silently allowed', async () => {
+    useSettings().setApproval('prs', true)
+    source.add('prs', { activate: () => {} }, { permissions: ['run:gh'] })
+    await loader.loadFromDisk()
+    expect(registry.record('prs')?.state).toBe('awaiting-approval')
+    expect(asked).toEqual([])
+    await loader.askPending()
+    expect(asked).toEqual(['prs'])
+  })
+
+  test('the question says what is being agreed to', () => {
+    const manifest: PluginManifest = { name: 'prs', displayName: 'PRs', permissions: ['agent', 'run:gh'] }
+    const first = approvalPrompt(manifest, '/p/prs', { programs: ['gh'], again: false })
+    expect(first.message).toContain('It asks to use: agent.')
+    expect(first.message).toContain('as you and with your saved logins: gh')
+    const again = approvalPrompt(manifest, '/p/prs', { programs: ['gh'], again: true })
+    expect(again).toMatchObject({ okLabel: 'Allow' })
+    expect(again.message).toContain("you haven't approved yet")
+    expect(approvalPrompt({ name: 'x' }, '/p/x', { programs: [], again: false }).message).not.toContain('saved logins')
   })
 })
 

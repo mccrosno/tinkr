@@ -35,7 +35,7 @@ Rust core modules (keep to these):
 2. Sidecar manager (spawn, restart, relay messages)
 3. File watcher and plugin files (watching drives plugin hot reload; `plugins.rs` serves plugin modules to the webview over a `tinkr-plugin` URI scheme and opens the plugins folder to the fs scope)
 4. PTY
-5. Host API permissions (Tauri capabilities)
+5. Host API: permissions (Tauri capabilities), and running programs for plugins (`programs.rs`)
 
 ## Agent layer
 - `AgentProvider` interface (start session, send message, stream events, abort, permission requests). Claude is the only implementation in v1.
@@ -92,6 +92,7 @@ Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel
 
 ### Chat
 - The message box is one rounded card: attach (icon), compact model and effort pickers, a round Send / Stop button.
+- While Claude's turn runs, a line under the newest message shows moving dots, what it's doing ("Thinking", "Running a command", ...) and how long the turn has taken. While a permission request waits, it says so and holds still. (Added 2026-11-27.)
 - The chat list gets a "New chat" button at the top, date groups (Today, Yesterday, Earlier), a "This folder / All folders" switch, and rename and delete on hover.
 
 ### Plugin API
@@ -115,10 +116,11 @@ export function activate(api: TinkrApi) {
 - Panels use `mount(el, ctx) => cleanup`: framework-agnostic, no build step needed. `mount` runs once per registration; the dock moves the element, it never rebuilds it. Optional esbuild step for Vue/React plugins.
 - Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu (where each one appears: see "Interface").
 - Commands have optional keybindings and are listed in the command palette (Ctrl+Shift+P). A plugin's ids are prefixed with its name (`notes.refresh`); built-ins keep bare ids.
-- Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 11.
+- Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), programs (`run:<program>`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 11.
 - Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands and shortcuts) are plugins using the same API.
 - Hot reload on file change. Plugin load errors surface in the Console panel AND are fed to the agent ("Ask Claude to fix" puts the error and the plugin's folder in the message box).
 - Plugins are trusted code. A plugin Tinkr hasn't seen before doesn't run until the user approves it in a dialog that says so; the answer is kept in settings.json.
+- **Running programs** (added 2026-11-27, so a plugin can use a login the user already has, such as `gh`, instead of asking for a token): `api.programs.run(program, args, options)` starts a program without a shell and returns its exit code and output. plugin.json lists each program (`"permissions": ["run:gh"]`), by bare name. The approval dialog names them, and a plugin that's already on is asked about again before it may run one that isn't approved. Approval is per program, not per command: an approved program can be given any arguments. Output is capped at 10 MB, runs are stopped after 30 s by default (10 minutes at most), and the default folder is the home folder. Only the program Tinkr started is stopped on a timeout, not processes it started itself. On macOS, apps opened from the Dock get a short PATH, so programs from Homebrew may not be found (untested).
 
 ### Claude-authored plugins
 The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.ts` (typed API), and a skill describing the contribution types. A `reload_plugin` tool / error feedback loop lets Claude iterate on its own plugins.

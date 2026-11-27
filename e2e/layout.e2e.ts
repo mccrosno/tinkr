@@ -7,9 +7,11 @@
 // terminal hidden until needed); opening a folder brings Files to the front; opening a
 // file shows the editor beside the chat; switching to "Editor" (Ctrl+Alt+2) moves
 // everything without losing the chat draft, the editor's undo history or the
-// terminal's screen; hiding and showing a panel keeps its size; a panel stacked with the
-// chat is closed instead of hidden and comes back; saving a preset, restoring it after a
-// reload, resetting and deleting it. The user's own layouts are saved first and put back.
+// terminal's screen; hiding and showing a panel keeps its size; a panel sharing a card
+// is closed instead of hidden and comes back to it; a card's menu splits and closes
+// panels; the rail, "All panels" and collapsing; the empty dock; saving a preset,
+// restoring it after a reload, resetting and deleting it. The user's own layouts and
+// rail settings are saved first and put back.
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,6 +51,18 @@ const saved = await js<Record<string, string>>(
   `Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('tinkr.layout.')).map(k => [k, localStorage.getItem(k)]))`,
 )
 
+const settings = store('settings')
+const rail = store('rail')
+const savedRail = await js<string>(`JSON.stringify([${settings}.appValue('rail.pins', null), ${settings}.appValue('rail.collapsed', null)])`)
+/** Choose an item from the ⋯ menu of the card a panel is on. */
+async function panelMenu(panel: string, item: string) {
+  await js(`${dock}.getPanel('${panel}').group.element.querySelector('[data-testid=panel-menu]').click()`)
+  const find = `[...document.querySelectorAll('.context-menu [role=menuitem]')].find(b => b.textContent.trim() === '${item}')`
+  await until(`menu item ${item}`, `!!${find}`, 2000)
+  await js(`${find}.click()`)
+}
+const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`)
+
 // A small project with one file.
 const dir = mkdtempSync(join(tmpdir(), 'tinkr-layout-'))
 mkdirSync(join(dir, 'src'))
@@ -58,6 +72,7 @@ try {
   // Start from the default Agent preset, freshly laid out, with no folder open.
   // (Each reload waits out the layout's save delay first: closing the page writes a pending save.)
   await js(`${store('workspace')}.closeFolder()`)
+  await js(`${settings}.setAppValue('rail.pins', undefined); ${settings}.setAppValue('rail.collapsed', undefined)`)
   await sleep(600)
   await js(`localStorage.removeItem('tinkr.layout.active'); localStorage.removeItem('tinkr.layout.state.agent'); localStorage.removeItem('tinkr.layout.state.editor'); location.reload()`)
   await sleep(1500)
@@ -141,15 +156,20 @@ try {
   if (Math.abs(after - before) > 2) throw new Error(`editor width ${before} -> ${after}`)
   pass(`hiding and showing the editor keeps its place and size (${after}px)`)
 
-  // 7. A panel dragged into the chat's group is closed (not hidden) and comes back at its home.
+  // 7. A panel sharing the chat's card is closed (not hidden, which would take the chat
+  //    along) and comes back to that card. The card's menu then splits it off again.
+  const together = `${dock}.getPanel('editor')?.group === ${dock}.getPanel('chat').group`
   await js(`${dock}.getPanel('editor').api.moveTo({ group: ${dock}.getPanel('chat').group })`)
-  await until('stacked with chat', `${dock}.getPanel('editor').group === ${dock}.getPanel('chat').group`)
+  await until('stacked with chat', together)
   await key('E', 'KeyE', 69, CTRL | SHIFT)
   await until('closed', `!${dock}.getPanel('editor') && ${layout}.visible.chat`)
   await key('E', 'KeyE', 69, CTRL | SHIFT)
-  await until('back on its own', `!!${dock}.getPanel('editor') && ${dock}.getPanel('editor').group !== ${dock}.getPanel('chat').group`)
+  await until('back on the card', `${together} && ${layout}.shown.editor`)
   if (!(await js<boolean>(`document.querySelector('[data-panel=editor] .cm-content').innerText.includes('one')`))) throw new Error('editor content lost')
-  pass('a panel stacked with the chat is closed instead of hidden, and comes back beside it')
+  await panelMenu('editor', 'Split right')
+  await until('split off', `!(${together})`)
+  if (!((await box('editor'))![0] > (await box('chat'))![0])) throw new Error('"Split right" did not put the editor on the right')
+  pass('a panel sharing the chat\'s card is closed and comes back to it; the card menu splits it off')
 
   // 8. Ctrl+B hides and shows Chats/Files together.
   await key('b', 'KeyB', 66, CTRL)
@@ -158,18 +178,78 @@ try {
   await until('sidebar back', `${layout}.visible.files && ${layout}.visible.chats`)
   pass('Ctrl+B hides and shows Chats and Files')
 
+  // The chat closes like any panel, and comes back from the rail where it was, draft and all.
+  const chatBefore = (await box('chat'))!
+  await panelMenu('chat', 'Close panel')
+  await until('chat closed', `!${dock}.getPanel('chat') && ${layout}.state('chat') === 'closed'`)
+  await click('.rail [data-pin=chat]')
+  await until('chat back', `${layout}.shown.chat`)
+  await sleep(200)
+  const chatAfter = (await box('chat'))!
+  if (Math.abs(chatAfter[0] - chatBefore[0]) > 12) throw new Error(`chat came back elsewhere: ${chatBefore} -> ${chatAfter}`)
+  if ((await js<string>(`document.querySelector('[data-panel=chat] textarea').value`)) !== 'draft survives') throw new Error('chat draft lost')
+  await click('.rail [data-pin=chat]')
+  await until('chat hidden from the rail', `${layout}.state('chat') === 'hidden'`)
+  await click('.rail [data-pin=chat]')
+  await until('chat shown again', `${layout}.shown.chat`)
+  pass('the chat can be closed; its rail icon brings it back in place, and hides and shows it')
+
+  // Dragging a tab onto the rail pins its panel. The drag events are dispatched in the
+  // page: dockview notes what's being dragged on `dragstart`, and the rail reads that.
+  await js(`${layout}.show('plugins')`)
+  await until('plugins shown', `${layout}.shown.plugins`)
+  await js(`(() => {
+    const panel = ${dock}.getPanel('plugins')
+    const tab = panel.group.element.querySelectorAll('.dv-tab')[panel.group.panels.indexOf(panel)]
+    const dataTransfer = new DataTransfer()
+    const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { dataTransfer, bubbles: true, cancelable: true }))
+    const rail = document.querySelector('.rail')
+    fire(tab, 'dragstart'); fire(rail, 'dragover'); fire(rail, 'drop'); fire(tab, 'dragend')
+  })()`)
+  await until('pinned by dragging', `!!document.querySelector('.rail [data-pin=plugins]')`, 3000)
+  await js(`${rail}.unpin('plugins'); ${layout}.close('plugins')`)
+  pass('dragging a tab onto the rail pins the panel')
+
+  // "All panels" pins and unpins; Ctrl+Shift+B collapses the rail into the title bar.
+  await click('[data-testid=all-panels]')
+  await until('panel list', `!!document.querySelector('.panel-list [data-panel-item=plugins]')`, 2000)
+  await click('.panel-list [data-panel-item=plugins] .pin')
+  if ((await js<number>(`Math.round(document.querySelector('.panel-list').getBoundingClientRect().width)`)) !== 300) throw new Error('panel list width')
+  await until('pinned', `!!document.querySelector('.rail [data-pin=plugins] svg')`, 2000)
+  await click('.panel-list [data-panel-item=plugins] .pin')
+  await until('unpinned', `!document.querySelector('.rail [data-pin=plugins]')`, 2000)
+  await click('[data-testid=all-panels]')
+  await key('B', 'KeyB', 66, CTRL | SHIFT)
+  await until('rail collapsed', `${rail}.collapsed && !document.querySelector('.rail') && !!document.querySelector('.titlebar [data-testid=agent-button]')`, 3000)
+  await click('[data-testid=rail-toggle]')
+  await until('rail back', `!!document.querySelector('.rail') && !document.querySelector('.titlebar [data-testid=agent-button]')`, 3000)
+  pass('"All panels" pins and unpins; the rail collapses (its agent dot moves to the title bar) and returns')
+
+  // With nothing on screen the dock says so; "New chat" there brings the chat back.
+  await js(`for (const id of ${dock}.panels.map(p => p.id)) ${layout}.close(id)`)
+  await until('empty dock', `!!document.querySelector('[data-testid=empty-dock]') && ${dock}.panels.length === 0`, 3000)
+  await click('[data-empty=all-panels]')
+  await until('panel list from the empty dock', `!!document.querySelector('.panel-list [data-panel-item=chat]')`, 2000)
+  await click('[data-empty=all-panels]')
+  await click('[data-empty=new-chat]')
+  await until('chat from empty', `${layout}.shown.chat && !document.querySelector('[data-testid=empty-dock]')`, 3000)
+  await js(`${layout}.reset()`)
+  await until('preset back', `${layout}.visible.chats && ${layout}.visible.chat`, 3000)
+  await js(`window.__tinkrOpenFolder(${JSON.stringify(dir)})`) // the new chat's folder is unchanged; this shows Files again
+  pass('closing every panel leaves "Nothing open"; New chat there brings the chat back')
+
   // 9. Save as a new preset from the Layout menu; it survives a reload; reset and delete.
   await key('`', 'Backquote', 192, CTRL) // hide the terminal: part of the saved arrangement
   await until('terminal hidden', `!${layout}.visible.terminal`)
   await js(`document.querySelector('[data-testid=layout-menu]').click()`)
-  await until('menu', `!!document.querySelector('.layout-menu [role=menu]')`, 2000)
-  await js(`[...document.querySelectorAll('.layout-menu .item')].find(b => b.textContent.includes('Save layout as')).click()`)
-  await until('name box', `!!document.querySelector('.layout-menu input')`, 2000)
-  await js(`(() => { const i = document.querySelector('.layout-menu input'); i.value = 'E2E focus'; i.dispatchEvent(new Event('input')); i.form.requestSubmit() })()`)
+  await until('menu', `!!document.querySelector('.layout-popup[role=menu]')`, 2000)
+  await js(`[...document.querySelectorAll('.layout-popup .item')].find(b => b.textContent.includes('Save layout as')).click()`)
+  await until('name box', `!!document.querySelector('.layout-popup input')`, 2000)
+  await js(`(() => { const i = document.querySelector('.layout-popup input'); i.value = 'E2E focus'; i.dispatchEvent(new Event('input')); i.form.requestSubmit() })()`)
   await until('saved', `${layout}.active.name === 'E2E focus'`, 3000)
   const customId = await js<string>(`${layout}.activeId`)
   if ((await js<string | null>(`${layout}.presetForKey(3)`)) !== customId) throw new Error('new preset is not Ctrl+Alt+3')
-  if (!(await js<boolean>(`document.querySelector('[data-testid=layout-menu]').textContent.includes('E2E focus')`))) throw new Error('menu button not updated')
+  if (!(await js<boolean>(`document.querySelector('[data-testid=layout-menu]').title.includes('E2E focus')`))) throw new Error('menu button not updated')
   // Rearrange, then reload: the preset is still active and as it was left.
   await js(`${dock}.getPanel('chats').group.api.setSize({ width: 300 })`)
   await sleep(600) // past the save delay
@@ -185,8 +265,8 @@ try {
   if (Math.abs((await js<number>(`Math.round(${dock}.getPanel('chats').group.api.width)`)) - 300) < 2) throw new Error('reset changed nothing')
   // Delete from the menu: back to Agent.
   await js(`document.querySelector('[data-testid=layout-menu]').click()`)
-  await until('menu again', `!!document.querySelector('.layout-menu [role=menu]')`, 2000)
-  await js(`document.querySelector('.layout-menu .delete[aria-label="Delete layout E2E focus"]').click()`)
+  await until('menu again', `!!document.querySelector('.layout-popup[role=menu]')`, 2000)
+  await js(`document.querySelector('.layout-popup .delete[aria-label="Delete layout E2E focus"]').click()`)
   await until('deleted', `${layout}.activeId === 'agent' && ${layout}.presets.length === 2`, 3000)
   pass('"Save layout as…" adds a preset (Ctrl+Alt+3) that survives a reload; reset and delete work')
 
@@ -194,6 +274,12 @@ try {
 } finally {
   // Put everything back: no folder, the user's own layouts, a fresh page.
   await js(`${store('terminal')}.closeAll(); ${store('editor')}.closeAll(); ${store('workspace')}.closeFolder()`).catch(() => {})
+  await js(`(() => {
+    const [pins, collapsed] = ${savedRail}
+    ${settings}.setAppValue('rail.pins', pins ?? undefined)
+    ${settings}.setAppValue('rail.collapsed', collapsed ?? undefined)
+    return ${settings}.flush()
+  })()`).catch(() => {})
   await sleep(600)
   await js(`(() => {
     for (const k of Object.keys(localStorage)) if (k.startsWith('tinkr.layout.')) localStorage.removeItem(k)

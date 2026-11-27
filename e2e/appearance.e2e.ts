@@ -77,7 +77,7 @@ try {
     join(dir, 'img', 'waves.svg'),
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#0b2233"/><path d="M0 10 Q10 0 20 10 T40 10" stroke="#1e5a7a" fill="none"/></svg>`,
   )
-  writeFileSync(join(dir, 'harbor.css'), `.statusbar { letter-spacing: 0.02em; }\n`)
+  writeFileSync(join(dir, 'harbor.css'), `.titlebar { letter-spacing: 0.02em; }\n`)
   writeFileSync(
     join(dir, 'harbor.json'),
     JSON.stringify({ id: 'harbor', name: 'Harbor', kind: 'dark', tokens: { accent: '#3fb0c9' }, background: { image: 'img/waves.svg', size: 'tile' }, translucency: 0.3, cssFile: 'harbor.css' }),
@@ -91,7 +91,7 @@ try {
   if (!/tinkr-plugin/.test(url) || !url.endsWith('/img/waves.svg')) throw new Error('picture URL: ' + url)
   const loaded = await js<boolean>(`new Promise((ok) => { const i = new Image(); i.onload = () => ok(true); i.onerror = () => ok(false); i.src = ${JSON.stringify(url)} })`)
   if (!loaded) throw new Error('the picture did not load from the plugin folder')
-  if ((await js<string>(`getComputedStyle(document.querySelector('.statusbar')).letterSpacing`)) === 'normal') throw new Error("the theme's CSS file was not applied")
+  if ((await js<string>(`getComputedStyle(document.querySelector('.titlebar')).letterSpacing`)) === 'normal') throw new Error("the theme's CSS file was not applied")
   pass('a theme-only plugin (JSON + CSS + SVG from its folder, no code) shows up, applies, and its picture loads')
 
   // 5. The terminal's colors follow the theme (xterm needs real colors, even from color-mix).

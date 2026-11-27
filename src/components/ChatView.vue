@@ -14,6 +14,7 @@ import MessageBody from './MessageBody.vue'
 import PermissionCard from './PermissionCard.vue'
 import RefChip from './RefChip.vue'
 import SetupNotice from './SetupNotice.vue'
+import WorkingIndicator from './WorkingIndicator.vue'
 
 const chat = useChat()
 const editor = useEditor()
@@ -174,7 +175,7 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
           <PermissionCard v-else-if="m.role === 'permission' && m.permission" :request="m.permission" />
           <div v-else class="error-box">{{ m.text }}</div>
         </article>
-        <div v-if="chat.busy && !chat.messages.some((m) => m.turnId === chat.activeTurnId)" class="thinking">Thinking…</div>
+        <WorkingIndicator v-if="chat.activity" :activity="chat.activity" />
       </div>
     </div>
 

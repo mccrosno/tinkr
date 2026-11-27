@@ -92,6 +92,7 @@ Decided 2026-11-27 from interactive mockups: floating panels with a pinned-panel
 
 ### Chat
 - The message box is one rounded card: attach (icon), compact model and effort pickers, a round Send / Stop button.
+- While Claude's turn runs, a line under the newest message shows moving dots, what it's doing ("Thinking", "Running a command", ...) and how long the turn has taken. While a permission request waits, it says so and holds still. (Added 2026-11-27.)
 - The chat list gets a "New chat" button at the top, date groups (Today, Yesterday, Earlier), a "This folder / All folders" switch, and rename and delete on hover.
 
 ### Plugin API

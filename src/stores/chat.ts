@@ -51,6 +51,31 @@ export type FileEvent = Extract<AgentEvent, { type: 'fileWillChange' | 'fileChan
 
 export type Connection = 'connecting' | 'connected' | 'disconnected'
 
+/** What the running turn is doing. `waiting` = it can't go on until the user answers. */
+export interface Activity {
+  label: string
+  waiting: boolean
+}
+
+/** What to call a tool while it runs. */
+const TOOL_ACTIVITY: Record<string, string> = {
+  Read: 'Reading',
+  Write: 'Writing a file',
+  Edit: 'Editing a file',
+  MultiEdit: 'Editing a file',
+  NotebookEdit: 'Editing a notebook',
+  Bash: 'Running a command',
+  PowerShell: 'Running a command',
+  Glob: 'Searching files',
+  Grep: 'Searching files',
+  WebFetch: 'Reading a web page',
+  WebSearch: 'Searching the web',
+  Task: 'Waiting on a sub-agent',
+  Agent: 'Waiting on a sub-agent',
+  mcp__tinkr__reload_plugin: 'Loading the plugin',
+  mcp__tinkr__plugin_status: 'Checking the plugin',
+}
+
 /** Does what the agent's plugin tools ask for, and reports back. */
 export type PluginRequestHandler = (action: PluginAction, name: string) => Promise<{ text: string; isError: boolean }>
 
@@ -159,6 +184,17 @@ export const useChat = defineStore('chat', () => {
     return last?.role === 'assistant' && !last.done && last.turnId !== undefined && last.turnId === activeTurnId.value ? last.id : null
   })
   const pendingPermissions = computed(() => messages.value.filter((m) => m.permission?.state === 'pending').length)
+
+  /** For the working indicator; null when no turn is running. */
+  const activity = computed<Activity | null>(() => {
+    if (!busy.value) return null
+    if (pendingPermissions.value) return { label: 'Waiting for your answer', waiting: true }
+    const turn = messages.value.filter((m) => m.turnId === activeTurnId.value)
+    const tool = turn.findLast((m) => m.tool?.status === 'running')?.tool
+    // After text, Claude may still be writing, or preparing its next step (a long file, say).
+    const label = tool ? (TOOL_ACTIVITY[tool.name] ?? `Using ${tool.name}`) : turn.at(-1)?.role === 'assistant' ? 'Working' : 'Thinking'
+    return { label: `${label}…`, waiting: false }
+  })
 
   function addLog(line: string) {
     log.value.push(`${new Date().toLocaleTimeString()}  ${line}`)
@@ -558,7 +594,7 @@ export const useChat = defineStore('chat', () => {
     connection, disconnectReason, cli, auth, messages, sessionId, activeTurnId, log, projectRoot, draft, draftRefs, focusRequests,
     models, model, effort, modelOption, effortLevels, effectiveEffort, draftAttachments, attachError, chats, chatsError, openingChat,
     allFolders, isHere, lastChat,
-    blocker, busy, canSend, pendingPermissions, streamingId,
+    blocker, busy, canSend, pendingPermissions, streamingId, activity,
     connect, send, stop, respondToPermission, addRef, removeRef, onFileEvent, newChat, setProject, restart, recheck,
     setModel, setEffort, addAttachments, removeAttachment, refreshChats, setAllFolders, openChat, renameChat, deleteChat,
     setDraft, onAgentEvent, setPluginRequestHandler,

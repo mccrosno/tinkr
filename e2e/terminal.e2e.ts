@@ -92,9 +92,12 @@ try {
   pass('ANSI colors render')
 
   // 4. Resizing the panel resizes the PTY, and the shell sees the new size.
+  // (Through the dock's API: dockview's drag handles don't take keyboard input.) Start
+  // from a known small size, so there's room to grow whatever size the layout restored.
+  await js(`window.__tinkrDock.getPanel('terminal').group.api.setSize({ height: 220 })`)
+  await sleep(400)
   const rowsBefore = await js<number>(`document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length`)
-  // (Through the dock's API: dockview's drag handles don't take keyboard input.)
-  await js(`(() => { const g = window.__tinkrDock.getPanel('terminal').group.api; g.setSize({ height: g.height + 100 }) })()`)
+  await js(`window.__tinkrDock.getPanel('terminal').group.api.setSize({ height: 340 })`)
   await until('more rows', `document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length > ${rowsBefore}`, 5000)
   const rowsAfter = await js<number>(`document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length`)
   await js(`document.querySelector('[data-testid=terminal-${await activeKey()}] textarea').focus()`)

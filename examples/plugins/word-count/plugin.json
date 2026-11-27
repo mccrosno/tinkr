@@ -1,0 +1,13 @@
+{
+  "name": "word-count",
+  "displayName": "Word count",
+  "version": "1.0.0",
+  "description": "Counts the lines and words of selected code, and keeps a running total in a panel.",
+  "main": "index.js",
+  "permissions": ["agent"],
+  "contributes": {
+    "panels": ["Word count"],
+    "commands": ["Word count: reset"],
+    "actions": ["Count words (selection menu)"]
+  }
+}

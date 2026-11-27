@@ -4,9 +4,7 @@
 // plugins); the only difference is that they're compiled in and keep bare ids
 // ("chat", not "chat.chat").
 
-import { createApp, h, type Component } from 'vue'
-import { pinia } from '../pinia'
-import type { PanelDefinition, TinkrApi } from '../plugins/api'
+import type { TinkrApi } from '../plugins/api'
 import type { BuiltInPlugin } from '../plugins/loader'
 import ChatList from '../components/ChatList.vue'
 import ChatView from '../components/ChatView.vue'
@@ -16,17 +14,8 @@ import FilesPanel from '../components/FilesPanel.vue'
 import PluginsPanel from '../components/PluginsPanel.vue'
 import TerminalPanel from '../components/TerminalPanel.vue'
 import { core } from './core'
-
-/** A panel's `mount` that runs a Vue component as its own small app, sharing Tinkr's stores. */
-export function vueMount(component: Component, props?: Record<string, unknown>): PanelDefinition['mount'] {
-  return (el) => {
-    // `tk-fill` (base.css): the component's root fills the panel (the container is a flex column).
-    const app = createApp({ render: () => h(component, { ...props, class: 'tk-fill' }) })
-    app.use(pinia)
-    app.mount(el)
-    return () => app.unmount()
-  }
-}
+import { themes } from './themes'
+import { vueMount } from './vueMount'
 
 const builtIn = (name: string, displayName: string, activate: (api: TinkrApi) => void): BuiltInPlugin => ({
   manifest: { name, displayName, version: 'built-in' },
@@ -35,6 +24,7 @@ const builtIn = (name: string, displayName: string, activate: (api: TinkrApi) =>
 
 export const BUILT_IN_PLUGINS: BuiltInPlugin[] = [
   core,
+  themes,
   builtIn('chat', 'Chat', (api) => {
     // The main window: no close button.
     api.panels.register({ id: 'chat', title: 'Chat', location: 'center', closable: false, mount: vueMount(ChatView) })

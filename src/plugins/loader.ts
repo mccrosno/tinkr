@@ -10,7 +10,7 @@
 
 import { usePlugins } from '../stores/plugins'
 import { useSettings } from '../stores/settings'
-import type { PluginManifest, PluginModule } from './api'
+import type { PluginManifest, PluginModule, ThemeFile } from './api'
 import { createApi, type PluginHandle } from './host'
 
 /** A plugin compiled into Tinkr. */
@@ -28,6 +28,10 @@ export interface PluginSource {
   manifest(name: string): Promise<PluginManifest>
   /** Import the plugin's entry module. `version` must differ between reloads. */
   importModule(name: string, main: string, version: number): Promise<PluginModule>
+  /** A text file in the plugin's folder (theme JSON, CSS). */
+  readFile(name: string, path: string): Promise<string>
+  /** A URL for a file in the plugin's folder (images); `version` as for importModule. */
+  fileUrl(name: string, path: string, version: number): string
   /** Watch the folder; the callback gets changed absolute paths. Returns an unwatch function. */
   watch(onChange: (paths: string[]) => void): Promise<() => void>
 }
@@ -169,11 +173,32 @@ export class PluginLoader {
 
   private async activate(name: string, manifest: PluginManifest) {
     this.registry.setState(name, 'loading')
-    const handle = createApi({ name, manifest, dir: this.pluginDir(name), builtIn: false })
+    const version = ++this.version
+    const source = this.source!
+    const handle = createApi({ name, manifest, dir: this.pluginDir(name), builtIn: false, fileUrl: (p) => source.fileUrl(name, p, version) })
     try {
-      const module = await this.source!.importModule(name, manifest.main ?? 'index.js', ++this.version)
+      // Register in `loaded` first, so whatever a failing plugin registered is still undone.
+      this.loaded.set(name, { handle, module: null })
+      // Themes listed in plugin.json: JSON (and CSS) files, no code needed.
+      for (const file of manifest.themes ?? []) {
+        let theme: ThemeFile
+        try {
+          theme = JSON.parse(await source.readFile(name, file)) as ThemeFile
+        } catch (e) {
+          throw new Error(`theme file ${file}: ${e instanceof Error ? e.message : String(e)}`)
+        }
+        const { cssFile, ...def } = theme
+        const css = cssFile ? await source.readFile(name, cssFile) : undefined
+        handle.api.themes.register({ ...def, ...(css !== undefined ? { css } : {}) })
+      }
+      // A themes-only plugin (no "main") runs no code.
+      if (manifest.themes?.length && !manifest.main) {
+        this.registry.setState(name, 'active')
+        this.registry.addLog(name, 'info', `loaded ${manifest.themes.length} theme(s)`)
+        return
+      }
+      const module = await source.importModule(name, manifest.main ?? 'index.js', version)
       if (typeof module.activate !== 'function') throw new Error(`${manifest.main ?? 'index.js'} doesn't export an activate(api) function`)
-      // Register in `loaded` first, so a failing activate's registrations are still undone.
       this.loaded.set(name, { handle, module })
       await module.activate(handle.api)
       this.registry.setState(name, 'active')

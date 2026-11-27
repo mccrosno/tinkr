@@ -2,14 +2,16 @@
 // config folder). It holds which plugins are allowed to run and each plugin's own
 // settings. Read once at startup; changes are written 300 ms after the last one.
 //
-// Shape: { "plugins": { "approved": { "<name>": true|false } },
-//          "plugin": { "<name>": { "<key>": <json> } } }
+// Shape: { "app": { "<key>": <json> },                       Tinkr's own (e.g. the theme)
+//          "plugins": { "approved": { "<name>": true|false } },
+//          "plugin": { "<name>": { "<key>": <json> } } }        each plugin's own
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { FileSystem } from '../workspace/fs'
 
 interface SettingsFile {
+  app?: Record<string, unknown>
   plugins?: { approved?: Record<string, boolean> }
   plugin?: Record<string, Record<string, unknown>>
 }
@@ -89,6 +91,19 @@ export const useSettings = defineStore('settings', () => {
     return () => listeners.delete(listener)
   }
 
+  /** One of Tinkr's own settings (e.g. "appearance.theme"). */
+  function appValue<T>(key: string, fallback: T): T {
+    const v = data.value.app?.[key]
+    return v === undefined ? fallback : (v as T)
+  }
+
+  function setAppValue(key: string, value: unknown) {
+    data.value.app ??= {}
+    if (value === undefined) delete data.value.app[key]
+    else data.value.app[key] = JSON.parse(JSON.stringify(value))
+    scheduleWrite()
+  }
+
   /** Drop everything stored about a plugin (its approval and its settings), e.g. when it's uninstalled. */
   function forgetPlugin(plugin: string) {
     delete data.value.plugins?.approved?.[plugin]
@@ -96,5 +111,5 @@ export const useSettings = defineStore('settings', () => {
     scheduleWrite()
   }
 
-  return { data, loaded, error, load, flush, approval, setApproval, forgetPlugin, pluginValue, setPluginValue, onPluginValueChange }
+  return { data, loaded, error, load, flush, approval, setApproval, forgetPlugin, appValue, setAppValue, pluginValue, setPluginValue, onPluginValueChange }
 })

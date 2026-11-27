@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+  <!-- "Paper": one tile of a dotted grid, repeated across the window. -->
+  <rect width="28" height="28" fill="#f4f1ea"/>
+  <circle cx="14" cy="14" r="1.1" fill="#c9c2b2"/>
+</svg>

@@ -6,6 +6,7 @@
 // Keyboard shortcuts are command keybindings, so plugins can add their own.
 import { onBeforeUnmount, onMounted } from 'vue'
 import ActionSlot from './components/ActionSlot.vue'
+import BackgroundLayer from './components/BackgroundLayer.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import DockLayout from './components/DockLayout.vue'
 import LayoutMenu from './components/LayoutMenu.vue'
@@ -42,6 +43,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app">
+    <BackgroundLayer />
     <header class="titlebar">
       <strong>Tinkr</strong>
       <span v-if="ws.name" class="project" :title="ws.root ?? ''">{{ ws.name }}</span>

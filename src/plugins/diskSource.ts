@@ -38,6 +38,8 @@ export async function diskSource(): Promise<PluginSource> {
       // `@vite-ignore`: the URL is only known at run time; Vite mustn't try to bundle it.
       return (await import(/* @vite-ignore */ pluginFileUrl(base, name, version, main))) as PluginModule
     },
+    readFile: (name, path) => tauriFs.readText(joinPath(joinPath(dir, name), path.replace(/^\.?[\\/]/, ''))),
+    fileUrl: (name, path, version) => pluginFileUrl(base, name, version, path),
     watch: (onChange) => tauriFs.watch(dir, onChange),
   }
 }

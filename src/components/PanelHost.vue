@@ -38,6 +38,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.panel-host { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tk-bg); }
+/* No background of its own: the dock group behind it has one (two see-through layers would hide a theme's picture). */
+.panel-host { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .missing { margin: 0; padding: 12px; color: var(--tk-text-muted); font-size: 13px; }
 </style>

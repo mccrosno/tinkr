@@ -8,6 +8,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import '@xterm/xterm/css/xterm.css'
+import { useAppearance } from '../stores/appearance'
 import { usePlugins } from '../stores/plugins'
 import { useTerminal } from '../stores/terminal'
 import { terminalFont, terminalTheme } from '../terminal/theme'
@@ -61,6 +62,8 @@ onMounted(async () => {
     cursorBlink: true,
     scrollback: 5000,
     theme: terminalTheme(),
+    // A see-through theme gives the terminal a translucent background.
+    allowTransparency: true,
   })
   term = t
   fit = new FitAddon()
@@ -90,6 +93,8 @@ onMounted(async () => {
   const recolor = () => t && (t.options.theme = terminalTheme())
   scheme.addEventListener('change', recolor)
   cleanups.push(() => scheme.removeEventListener('change', recolor))
+  // ...and the theme (Appearance panel).
+  cleanups.push(watch(() => useAppearance().revision, recolor))
 
   // Size the terminal to its box before starting the shell, so the first prompt is
   // drawn at the right width.

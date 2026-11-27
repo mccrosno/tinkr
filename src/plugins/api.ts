@@ -36,8 +36,13 @@ export interface PluginManifest {
   displayName?: string
   version?: string
   description?: string
-  /** The ES module to load, relative to the folder. Default "index.js". */
+  /**
+   * The ES module to load, relative to the folder. Default "index.js", except in a
+   * plugin that only lists `themes`: without `main` it runs no code at all.
+   */
   main?: string
+  /** Theme files (JSON, see `ThemeFile`), relative to the folder. Loaded without any code. */
+  themes?: string[]
   permissions?: Permission[]
   /** Informational list of what the plugin adds (shown in the Plugins panel). */
   contributes?: { panels?: string[]; commands?: string[]; actions?: string[]; themes?: string[]; layouts?: string[] }
@@ -131,6 +136,55 @@ export interface ActionDefinition {
 }
 
 // ---------------------------------------------------------------------------
+// Themes
+// ---------------------------------------------------------------------------
+
+/** A picture behind the panels. */
+export interface ThemeBackground {
+  /**
+   * A URL, or (for a plugin's theme) a path inside the plugin's folder. PNG, JPEG,
+   * WebP, GIF or SVG; animated SVG and GIF animate.
+   */
+  image: string
+  /** "cover" (default) fills the window; "contain" shows it whole; "tile" repeats it. */
+  size?: 'cover' | 'contain' | 'tile'
+  /** CSS background-position, e.g. "center" (default) or "right bottom". */
+  position?: string
+  /** 0 to 1 (default 1). Lower lets the window color show through the picture. */
+  opacity?: number
+}
+
+export interface ThemeDefinition {
+  /** Unique within the plugin. A plugin's theme is "<plugin>.<id>". */
+  id: string
+  name: string
+  /** Which built-in color set this theme starts from (its tokens override parts of it). */
+  kind: 'dark' | 'light'
+  /**
+   * Design tokens to change: CSS colors (or other values) by name, e.g.
+   * { "accent": "#4f8cff", "bg": "#101418" }. Names may include the "--tk-" prefix.
+   * The full list is Tinkr's src/styles/tokens.css.
+   */
+  tokens?: Record<string, string>
+  background?: ThemeBackground
+  /**
+   * How see-through the panels are over the background, 0 (default, opaque) to 0.9.
+   * Menus and popups always stay opaque.
+   */
+  translucency?: number
+  /** Blur behind see-through panels, in px (default 0). Off when the user picks "Reduce effects". */
+  blur?: number
+  /** Extra CSS, applied while the theme is on. Use the tokens (var(--tk-...)) for colors. */
+  css?: string
+}
+
+/** A theme as a JSON file (listed in plugin.json `themes`): like ThemeDefinition, but CSS can come from a file. */
+export type ThemeFile = Omit<ThemeDefinition, 'css'> & {
+  /** Path of a CSS file inside the plugin's folder. */
+  cssFile?: string
+}
+
+// ---------------------------------------------------------------------------
 // Host APIs
 // ---------------------------------------------------------------------------
 
@@ -213,7 +267,13 @@ export interface TinkrApi {
   /** The API's version; bumped when something changes incompatibly. */
   readonly version: 1
   /** This plugin. */
-  readonly plugin: { readonly name: string; readonly dir: string | null; readonly manifest: PluginManifest }
+  readonly plugin: {
+    readonly name: string
+    readonly dir: string | null
+    readonly manifest: PluginManifest
+    /** A URL for a file in the plugin's folder (an image, say), usable in `<img src>` or CSS. */
+    url(path: string): string
+  }
   panels: { register(panel: PanelDefinition): Disposable }
   commands: {
     register(command: CommandDefinition): Disposable
@@ -222,6 +282,10 @@ export interface TinkrApi {
   }
   actions: { register(action: ActionDefinition): Disposable }
   layout: LayoutApi
+  themes: {
+    /** Add a theme to the Appearance panel. Its `background.image` may be a path inside the plugin's folder. */
+    register(theme: ThemeDefinition): Disposable
+  }
   workspace: WorkspaceApi
   editor: EditorApi
   /** Throws unless plugin.json lists "agent" in `permissions`. */

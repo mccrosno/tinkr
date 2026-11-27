@@ -32,6 +32,8 @@ class FakeSource implements PluginSource {
   dir = '/home/me/.config/tinkr/plugins'
   modules = new Map<string, PluginModule>()
   manifests = new Map<string, PluginManifest | string>()
+  /** Other files in plugin folders, by "<plugin>/<path>". */
+  files = new Map<string, string>()
   imports: string[] = []
   onChange: (paths: string[]) => void = () => {}
   add(name: string, module: PluginModule, manifest: Partial<PluginManifest> = {}) {
@@ -52,6 +54,14 @@ class FakeSource implements PluginSource {
     const m = this.modules.get(name)
     if (!m) throw new Error(`cannot import ${main}`)
     return m
+  }
+  async readFile(name: string, path: string) {
+    const text = this.files.get(`${name}/${path}`)
+    if (text === undefined) throw new Error(`not found: ${path}`)
+    return text
+  }
+  fileUrl(name: string, path: string, version: number) {
+    return `tinkr-plugin://localhost/${name}/${version}/${path}`
   }
   async watch(onChange: (paths: string[]) => void) {
     this.onChange = onChange
@@ -204,6 +214,41 @@ describe('plugin loading', () => {
   test('built-ins always run and keep bare ids', async () => {
     await loader.loadBuiltIns([{ manifest: { name: 'core' }, activate: (api) => void api.commands.register({ id: 'chat.new', title: 'New chat', run: () => 7 }) }])
     expect(await registry.executeCommand('chat.new')).toBe(7)
+  })
+})
+
+describe('themes from plugins', () => {
+  test('a themes-only plugin: JSON + CSS files, no code; the picture becomes a plugin URL', async () => {
+    source.manifests.set('sunset', { name: 'sunset', themes: ['themes/sunset.json'] })
+    source.files.set(
+      'sunset/themes/sunset.json',
+      JSON.stringify({ id: 'sunset', name: 'Sunset', kind: 'dark', tokens: { accent: '#f90' }, background: { image: 'img/sky.webp', opacity: 0.8 }, translucency: 0.3, blur: 10, cssFile: 'themes/extra.css' }),
+    )
+    source.files.set('sunset/themes/extra.css', '.chat { letter-spacing: 0.01em }')
+    await boot()
+    expect(registry.record('sunset')?.state).toBe('active')
+    expect(source.imports).toEqual([]) // no code was imported
+    const t = registry.themes.find((x) => x.id === 'sunset.sunset')!
+    expect(t).toMatchObject({ name: 'Sunset', kind: 'dark', tokens: { accent: '#f90' }, translucency: 0.3, blur: 10, css: '.chat { letter-spacing: 0.01em }' })
+    expect(t.background).toEqual({ url: 'tinkr-plugin://localhost/sunset/1/img/sky.webp', size: 'cover', position: 'center', opacity: 0.8 })
+  })
+
+  test('a broken theme file fails the plugin with the file named', async () => {
+    source.manifests.set('bad', { name: 'bad', themes: ['t.json'] })
+    source.files.set('bad/t.json', '{ not json')
+    await boot()
+    expect(registry.record('bad')?.state).toBe('error')
+    expect(registry.record('bad')?.error).toMatch(/theme file t\.json/)
+  })
+
+  test('themes from code: kind is required, translucency is capped, URLs are kept', () => {
+    const api = createApi({ name: 'p', manifest: { name: 'p' }, dir: null, builtIn: false, fileUrl: (f) => `u/${f}` }).api
+    expect(() => api.themes.register({ id: 'x', name: 'X', kind: 'blue' as 'dark' })).toThrow(/"kind"/)
+    api.themes.register({ id: 'y', name: 'Y', kind: 'light', translucency: 5, background: { image: 'https://example.com/a.png', size: 'tile' } })
+    const t = registry.themes.find((x) => x.id === 'p.y')!
+    expect(t.translucency).toBe(0.9)
+    expect(t.background?.url).toBe('https://example.com/a.png')
+    expect(api.plugin.url('a/b.png')).toBe('u/a/b.png')
   })
 })
 

@@ -20,7 +20,7 @@ const notes = useNotifications()
 
 <style scoped>
 .toasts { position: fixed; right: 12px; bottom: 36px; z-index: 900; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, 80vw); }
-.toast { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: var(--tk-surface); border: 1px solid var(--tk-border); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); box-shadow: var(--tk-shadow); font-size: 13px; }
+.toast { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: var(--tk-popup); border: 1px solid var(--tk-border); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); box-shadow: var(--tk-shadow); font-size: 13px; }
 .toast.warn { border-left-color: var(--tk-warn); }
 .toast.error { border-left-color: var(--tk-danger); }
 .body { flex: 1; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }

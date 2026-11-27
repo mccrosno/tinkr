@@ -21,6 +21,8 @@ export interface PluginIdentity {
   manifest: PluginManifest
   dir: string | null
   builtIn: boolean
+  /** A URL for a file in the plugin's folder (plugins on disk; built-ins use URLs directly). */
+  fileUrl?: (path: string) => string
 }
 
 /** The API plus the means to undo everything the plugin registered. */
@@ -87,7 +89,7 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
 
   const api: TinkrApi = {
     version: 1,
-    plugin: { name: plugin.name, dir: plugin.dir, manifest: plugin.manifest },
+    plugin: { name: plugin.name, dir: plugin.dir, manifest: plugin.manifest, url: (path) => plugin.fileUrl?.(path) ?? path },
 
     panels: {
       register: (def) => track(registry.registerPanel(plugin.name, fullId(def.id), def)),
@@ -107,6 +109,10 @@ export function createApi(plugin: PluginIdentity, fs: FileSystem = tauriFs): Plu
       hide: (id) => useLayout().hide(id),
       toggle: (id) => useLayout().toggle(id),
       registerPreset: (p) => track(registry.registerPreset(plugin.name, `plugin:${fullId(p.id)}`, p.name, p.layout)),
+    },
+
+    themes: {
+      register: (def) => track(registry.registerTheme(plugin.name, fullId(def.id), def, (path) => plugin.fileUrl?.(path) ?? path)),
     },
 
     workspace: {

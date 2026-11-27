@@ -3,7 +3,8 @@ import App from './App.vue'
 import { ClaudeSidecarProvider } from './agent/claudeSidecar'
 import { pinia } from './pinia'
 import { openFolder } from './app/workspace'
-import { bootPlugins } from './plugins/boot'
+import { bootPlugins, pluginsReady } from './plugins/boot'
+import { useAppearance } from './stores/appearance'
 import { useChat } from './stores/chat'
 import { useEditor } from './stores/editor'
 import { useReview } from './stores/review'
@@ -41,3 +42,5 @@ chat.connect(new ClaudeSidecarProvider())
 ws.init()
 // Panels, commands and buttons: the built-in plugins, then the ones on disk. The dock waits for them.
 void bootPlugins()
+// The theme: once settings.json is read and the plugins' themes are registered.
+void pluginsReady().then(() => useAppearance().start())

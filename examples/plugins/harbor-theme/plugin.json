@@ -1,0 +1,7 @@
+{
+  "name": "harbor-theme",
+  "displayName": "Harbor theme",
+  "version": "1.0.0",
+  "description": "A dark blue theme with a tiled wave pattern. A theme-only plugin: JSON, CSS and a picture, no code.",
+  "themes": ["harbor.json"]
+}

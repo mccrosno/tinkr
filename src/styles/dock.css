@@ -64,3 +64,13 @@
 .dockview-theme-tinkr .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
   box-shadow: inset 0 2px 0 var(--tk-accent);
 }
+
+/* Glass: a theme with a background, see-through panels and blur (src/theme/apply.ts adds
+   `tk-glass` to <html> and sets --tk-blur; "Reduce effects" leaves it off). Both
+   spellings of backdrop-filter, for WebKitGTK and WKWebView. */
+.tk-glass .dv-groupview,
+.tk-glass .titlebar,
+.tk-glass .statusbar {
+  -webkit-backdrop-filter: blur(var(--tk-blur));
+  backdrop-filter: blur(var(--tk-blur));
+}

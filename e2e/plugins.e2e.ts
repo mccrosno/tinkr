@@ -80,6 +80,8 @@ try {
   await js(`${settings}.setApproval('${SAMPLE}', true); ${settings}.setApproval('${NOPERM}', true); ${settings}.setApproval('${OFF}', false)`)
 
   // 1. The built-in panels, commands and buttons come from built-in plugins.
+  // (The window may still be starting, e.g. right after another check reloaded it.)
+  await until('built-ins loaded', `!!window.__tinkr && ${plugins}?.record('core')?.state === 'active' && !!document.querySelector('[data-panel=chat] .chat')`, 30_000)
   const builtIns = await js<string[]>(`${plugins}.plugins.filter(p => p.builtIn && p.state === 'active').map(p => p.name)`)
   for (const n of ['core', 'chat', 'files', 'editor', 'terminal', 'console', 'plugins']) if (!builtIns.includes(n)) throw new Error('built-in not active: ' + n)
   if (!(await js<boolean>(`!!document.querySelector('[data-panel=chat] .chat textarea') && !!document.querySelector('.titlebar [data-action=openFolder]')`)))

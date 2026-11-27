@@ -64,5 +64,5 @@ const tone = computed(() => {
 .spacer { flex: 1; }
 .link { background: none; border: 0; padding: 2px 4px; color: var(--tk-text-muted); }
 .link:hover { color: var(--tk-text); }
-.log { position: absolute; right: 8px; bottom: calc(100% + 6px); width: min(640px, calc(100vw - 16px)); max-height: 40vh; overflow: auto; margin: 0; padding: 8px 10px; background: var(--tk-surface); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); font-size: 11.5px; white-space: pre-wrap; color: var(--tk-text-muted); }
+.log { position: absolute; right: 8px; bottom: calc(100% + 6px); width: min(640px, calc(100vw - 16px)); max-height: 40vh; overflow: auto; margin: 0; padding: 8px 10px; background: var(--tk-popup); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); font-size: 11.5px; white-space: pre-wrap; color: var(--tk-text-muted); }
 </style>

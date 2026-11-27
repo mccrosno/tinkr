@@ -9,7 +9,8 @@
 
 import { defineStore } from 'pinia'
 import { computed, markRaw, reactive, ref, shallowReactive } from 'vue'
-import type { ActionDefinition, ActionSlot, CommandDefinition, Disposable, PanelDefinition, PanelLocation, PluginManifest } from '../plugins/api'
+import type { ActionDefinition, ActionSlot, CommandDefinition, Disposable, PanelDefinition, PanelLocation, PluginManifest, ThemeDefinition } from '../plugins/api'
+import { MAX_TRANSLUCENCY, type ResolvedTheme } from '../theme/apply'
 
 export type PluginState = 'loading' | 'active' | 'error' | 'disabled' | 'awaiting-approval'
 
@@ -92,6 +93,7 @@ export const usePlugins = defineStore('plugins', () => {
   const commands = shallowReactive(new Map<string, CommandEntry>())
   const actions = ref<ActionEntry[]>([])
   const presets = ref<PresetEntry[]>([])
+  const themes = ref<ResolvedTheme[]>([])
   const log = ref<LogEntry[]>([])
   /** Plugins being reloaded: their panels stay in the dock while they re-register. */
   const reloading = new Set<string>()
@@ -253,6 +255,34 @@ export const usePlugins = defineStore('plugins', () => {
     return { dispose: () => (presets.value = presets.value.filter((p) => p.id !== id)) }
   }
 
+  /** A theme; `url` turns a path inside the plugin's folder into a URL (built-ins pass URLs already). */
+  function registerTheme(plugin: string, id: string, def: ThemeDefinition, url: (path: string) => string): Disposable {
+    if (themes.value.some((t) => t.id === id)) throw new Error(`a theme with id "${id}" is already registered`)
+    if (def.kind !== 'dark' && def.kind !== 'light') throw new Error(`theme "${id}": "kind" must be "dark" or "light"`)
+    const bg = def.background
+    const isUrl = (s: string) => /^(https?:|data:|blob:|tinkr-plugin:|\/)/.test(s)
+    const theme: ResolvedTheme = {
+      id,
+      plugin,
+      name: def.name || id,
+      kind: def.kind,
+      tokens: { ...(def.tokens ?? {}) },
+      background: bg?.image
+        ? {
+            url: isUrl(bg.image) ? bg.image : url(bg.image),
+            size: bg.size ?? 'cover',
+            position: bg.position ?? 'center',
+            opacity: Math.min(1, Math.max(0, bg.opacity ?? 1)),
+          }
+        : null,
+      translucency: Math.min(MAX_TRANSLUCENCY, Math.max(0, def.translucency ?? 0)),
+      blur: Math.max(0, def.blur ?? 0),
+      css: def.css ?? '',
+    }
+    themes.value.push(theme)
+    return { dispose: () => (themes.value = themes.value.filter((t) => t.id !== id)) }
+  }
+
   function beginReload(plugin: string) {
     reloading.add(plugin)
   }
@@ -264,10 +294,10 @@ export const usePlugins = defineStore('plugins', () => {
   }
 
   return {
-    plugins, panels, commands, actions, presets, log, errors,
+    plugins, panels, commands, actions, presets, themes, log, errors,
     record, upsertPlugin, setState, removePlugin, addLog, clearLog,
     registerPanel, unregisterPanel, setPanelVisible, onPanelRemoved,
     registerCommand, executeCommand, commandForKey,
-    registerAction, actionsIn, registerPreset, beginReload, endReload,
+    registerAction, actionsIn, registerPreset, registerTheme, beginReload, endReload,
   }
 })

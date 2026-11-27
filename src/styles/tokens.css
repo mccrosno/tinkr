@@ -1,7 +1,12 @@
 /* Design tokens. Components use only these variables (no hard-coded colors), so a
-   theme (Milestone 7) is a set of overrides for this list. */
+   theme is a set of overrides for this list (src/theme/apply.ts sets them on <html>).
+
+   Two base sets: dark and light. By default the OS decides (prefers-color-scheme); a
+   theme of a fixed kind sets <html data-tk-scheme="dark|light"> to choose one. */
 :root {
   color-scheme: dark;
+  /* The window under everything (also under a theme's background picture). */
+  --tk-window: #15161a;
   --tk-bg: #15161a;
   --tk-surface: #1c1d22;
   --tk-surface-2: #24262c;
@@ -58,11 +63,16 @@
   --tk-radius-sm: 5px;
   /* Popups and menus. */
   --tk-shadow: 0 4px 16px #00000066;
+  /* Menus, popups, the command palette and toasts: always opaque, even when a theme
+     makes panels see-through over a background. */
+  --tk-popup: #1c1d22;
 }
 
+/* The light set: when the OS is light and no theme fixes dark, or a theme fixes light. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-tk-scheme='dark']) {
     color-scheme: light;
+    --tk-window: #f6f5f2;
     --tk-bg: #f6f5f2;
     --tk-surface: #ffffff;
     --tk-surface-2: #efeee9;
@@ -112,5 +122,60 @@
     --tk-term-bright-magenta: #8f52c4;
     --tk-term-bright-cyan: #2a8597;
     --tk-term-bright-white: #3a3935;
+    --tk-popup: #ffffff;
   }
+}
+:root[data-tk-scheme='light'] {
+  color-scheme: light;
+  --tk-window: #f6f5f2;
+  --tk-bg: #f6f5f2;
+  --tk-surface: #ffffff;
+  --tk-surface-2: #efeee9;
+  --tk-border: #dcdad3;
+  --tk-text: #1f1e1c;
+  --tk-text-muted: #6d6a63;
+  --tk-accent: #c2613f;
+  --tk-accent-hover: #ad5333;
+  --tk-on-accent: #ffffff;
+  --tk-user-bubble: #f3e3da;
+  --tk-ok: #2f8a4f;
+  --tk-warn: #a87412;
+  --tk-danger: #b3392c;
+  --tk-danger-bg: #fbe7e4;
+  --tk-code-bg: #f1f0ec;
+  --tk-focus: #c2613f66;
+  --tk-selection: #c2613f2e;
+  --tk-gutter-text: #a3a09a;
+  --tk-active-line: #00000008;
+  --tk-syntax-keyword: #b04a26;
+  --tk-syntax-string: #3f7a2a;
+  --tk-syntax-number: #9a6a00;
+  --tk-syntax-comment: #8a877f;
+  --tk-syntax-function: #1f62a8;
+  --tk-syntax-type: #7b3fb0;
+  --tk-syntax-property: #1d6f80;
+  --tk-syntax-heading: #9a5a00;
+  --tk-diff-added-bg: #2f8a4f17;
+  --tk-diff-added-strong: #2f8a4f38;
+  --tk-diff-removed-bg: #b3392c12;
+  --tk-diff-removed-strong: #b3392c33;
+  --tk-shadow: 0 4px 16px #00000024;
+  /* "White" must stay readable on a light background, so it's a mid gray here. */
+  --tk-term-black: #1f1e1c;
+  --tk-term-red: #b3392c;
+  --tk-term-green: #2f7a3a;
+  --tk-term-yellow: #8a6100;
+  --tk-term-blue: #1f62a8;
+  --tk-term-magenta: #7b3fb0;
+  --tk-term-cyan: #1d6f80;
+  --tk-term-white: #8a877f;
+  --tk-term-bright-black: #6d6a63;
+  --tk-term-bright-red: #c94a3c;
+  --tk-term-bright-green: #3f8f4a;
+  --tk-term-bright-yellow: #a87412;
+  --tk-term-bright-blue: #2f74c0;
+  --tk-term-bright-magenta: #8f52c4;
+  --tk-term-bright-cyan: #2a8597;
+  --tk-term-bright-white: #3a3935;
+  --tk-popup: #ffffff;
 }

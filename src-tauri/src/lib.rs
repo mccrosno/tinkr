@@ -5,8 +5,39 @@ mod sidecar;
 
 use tauri::RunEvent;
 
+/// Linux only: avoid WebKitGTK's slow path for themes with blur (SPEC.md "Spike findings",
+/// spike 4). Where WebKitGTK can't use DMA-BUF for drawing (no GPU render device, or
+/// WSL), blur fell to ~25 fps; `WEBKIT_DISABLE_DMABUF_RENDERER=1` brought it back to 60.
+/// It must be set before the webview starts. A value the user set is left alone.
+#[cfg(target_os = "linux")]
+fn prefer_working_webkit_renderer() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    if std::env::var_os(VAR).is_some() {
+        return;
+    }
+    // A render node is how a GPU is offered to programs; none means software drawing.
+    let has_render_node = std::fs::read_dir("/dev/dri")
+        .map(|entries| {
+            // `flatten` skips entries that couldn't be read; `any` stops at the first match.
+            entries.flatten().any(|e| e.file_name().to_string_lossy().starts_with("renderD"))
+        })
+        .unwrap_or(false);
+    // WSL's kernel says "microsoft" in its version string.
+    let wsl = std::fs::read_to_string("/proc/version")
+        .map(|v| v.to_lowercase().contains("microsoft"))
+        .unwrap_or(false);
+    if !has_render_node || wsl {
+        // SAFETY: called first thing in `run`, before any other thread exists, so nothing
+        // can be reading the environment at the same time (Rust 2024 marks this unsafe).
+        unsafe { std::env::set_var(VAR, "1") };
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    prefer_working_webkit_renderer();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // File access for the webview, limited to folders opened with `open_project`

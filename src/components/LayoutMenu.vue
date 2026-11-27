@@ -97,7 +97,7 @@ onBeforeUnmount(() => (open.value = false))
 
 <style scoped>
 .layout-menu { position: relative; }
-.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 240px; padding: 4px; background: var(--tk-surface); border: 1px solid var(--tk-border); border-radius: var(--tk-radius); box-shadow: var(--tk-shadow); }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 240px; padding: 4px; background: var(--tk-popup); border: 1px solid var(--tk-border); border-radius: var(--tk-radius); box-shadow: var(--tk-shadow); }
 .item-row { display: flex; align-items: center; }
 .item { flex: 1; display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--tk-radius-sm); background: none; text-align: left; }
 .item:hover, .delete:hover { background: var(--tk-surface-2); }

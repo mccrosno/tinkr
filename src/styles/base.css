@@ -3,7 +3,7 @@ html, body, #app { margin: 0; height: 100%; }
 /* An app window, not a page: panels scroll themselves, the window never does. */
 body { overflow: hidden; }
 body {
-  background: var(--tk-bg);
+  background: var(--tk-window);
   color: var(--tk-text);
   font: 14px/1.5 var(--tk-font);
   -webkit-font-smoothing: antialiased;

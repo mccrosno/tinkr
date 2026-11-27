@@ -73,7 +73,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', onPointerDown, t
 </template>
 
 <style scoped>
-.menu { position: fixed; z-index: 100; min-width: 200px; padding: 4px; background: var(--tk-surface); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); box-shadow: var(--tk-shadow); font-size: 13px; }
+.menu { position: fixed; z-index: 100; min-width: 200px; padding: 4px; background: var(--tk-popup); border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); box-shadow: var(--tk-shadow); font-size: 13px; }
 button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 24px; padding: 4px 10px; border: 0; border-radius: var(--tk-radius-sm); background: none; text-align: left; }
 button:hover:not(:disabled), button:focus-visible { background: var(--tk-surface-2); outline: none; }
 kbd { color: var(--tk-text-muted); font-size: 11.5px; }

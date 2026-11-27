@@ -86,8 +86,10 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 - Later: static `registry.json` in a GitHub repo, shown as a "Browse plugins" tab that reuses git install. No server.
 
 ## Theming
-- CSS variables as design tokens. A theme is JSON plus optional CSS.
+- CSS variables as design tokens. A theme is JSON plus optional CSS: a `kind` (dark or light base set), token overrides, an optional background picture, how see-through the panels are over it (`translucency`) and the blur behind them. Plugins add themes from code (`api.themes.register`) or as JSON files listed in plugin.json (`themes`), with no code at all.
 - Background layer: image (PNG, JPG, WebP, GIF) and SVG (static or animated). Video and shaders are later plugins.
+- Menus and popups stay opaque (`--tk-popup`), whatever the panels do.
+- Blur is turned off by "Reduce effects", which a one-time ~1 s frame check sets when blur is slow (95th percentile over 25 ms).
 - Test blur and background effects on all three webviews (WebKitGTK, WebView2, WKWebView); they differ.
 
 ## Milestones
@@ -98,7 +100,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 5. Chat like Claude Desktop: conversation history (reopen and continue past chats), chats without a project folder, attachments (images and files), model and effort picker. **Done** (see "Milestone 5 notes" below).
 6. Docking layout + saved layouts ("Agent" chat-first default, "Editor"). **Done** (see "Milestone 6 notes" below).
 7. Plugin loader, slots, hot reload (move built-ins onto the plugin API). **Done** (see "Milestone 7 notes" below).
-8. Themes and backgrounds.
+8. Themes and backgrounds. **Done** (see "Milestone 8 notes" below).
 9. In-app plugin authoring by Claude.
 10. Git install for plugins.
 
@@ -217,6 +219,21 @@ What shipped, and decisions made along the way:
 - **Focus fix:** the chat used to move focus to its input whenever a reply ended, even if the user had moved to the editor or terminal. It now does so only if focus was still in the chat.
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
+
+## Milestone 8 notes
+Themes and backgrounds.
+
+- **Tokens:** `tokens.css` now has a dark set (default) and a light set, picked by the OS unless `<html data-tk-scheme="dark|light">` fixes one (themes of a fixed kind do). New tokens: `--tk-window` (the opaque color under everything, also under a picture) and `--tk-popup` (menus, the context menu, the command palette, toasts, tooltips: always opaque).
+- **Applying a theme** (`src/theme/apply.ts`): `themeVars` (pure, unit-tested) turns a theme into CSS variables: short or full token names; values containing `;{}` are dropped; the window and popup colors follow the theme's bg/surface; with a picture and `translucency` > 0 the four panel tokens (bg, surface, surface-2, code-bg) become `color-mix(in srgb, <color> N%, transparent)` (max 0.9 see-through); blur sets `--tk-blur` and the `tk-glass` class, which puts `backdrop-filter` (both spellings) on dock groups, the titlebar and the status bar. `applyTheme` sets them on `<html>` (removing the previous theme's) and adds the theme's CSS in a `<style>`.
+- **Picture:** `BackgroundLayer.vue`, a fixed layer at z-index −1 (over the window color, under everything else). `PanelHost` no longer paints a background: two see-through layers stacked (the dock group's and the host's) hid the picture.
+- **Themes are plugins' business:** the registry keeps them; a disk plugin's picture path becomes a `tinkr-plugin` URL (new `api.plugin.url(path)`, also handy for panel images). A plugin with `themes` in plugin.json and no `main` runs no code (`ThemeFile` JSON, optional `cssFile`). The built-in "themes" plugin registers System (follows the OS), Tinkr Dark, Tinkr Light, Midnight (tokens only), Dusk (an animated SVG of drifting radial gradients, 50% see-through, 18px blur) and Paper (a tiled SVG, light, 20% see-through, no blur), and the Appearance panel (theme cards with previews, "Reduce effects"; status bar "Theme" button, "View: Appearance", "Theme: switch to the next one").
+- **Settings:** `settings.json` got an `app` section: `appearance.theme`, `appearance.reduceEffects`, `appearance.blurProbe`. A chosen theme whose plugin is missing shows System and comes back with the plugin.
+- **Blur check** (`src/theme/probe.ts`, the appearance store): the first time a theme with blur is on and "Reduce effects" is undecided, measure ~1 s of frames while nudging the picture by half a pixel each frame (without a change, nothing repaints and blur costs nothing); over 25 ms at the 95th percentile, effects are reduced and a toast says so. 16.8 ms on the author's Windows machine (240 Hz monitor).
+- **Terminal:** xterm.js needs real colors, so `terminalTheme` resolves each token by painting one pixel with it on a canvas and reading it back (works for color-mix in every engine); `allowTransparency` is on; it recolors when the theme changes.
+- **Linux (Rust, `lib.rs`):** before the webview starts, set `WEBKIT_DISABLE_DMABUF_RENDERER=1` when there's no GPU render node in `/dev/dri` or the kernel is WSL's, unless the user set it (spike 4). Clippy and the Rust tests pass on Linux (WSL Ubuntu 24.04).
+- **Example:** `examples/plugins/harbor-theme` (JSON, CSS, a tiled SVG; no code).
+- **Not done yet:** WKWebView (macOS) and native Linux with a GPU are still untested for blur; no theme editor in the app; video and shader backgrounds are later plugins.
+- **Tests:** unit tests for `themeVars` (names, unsafe values, window/popup following, see-through only with a picture, reduce effects, System), the frame percentile, the appearance store (default, remembered choice, fallback and return), and themes from plugins (JSON + CSS without code, broken theme files, validation, `api.plugin.url`). `e2e/appearance.e2e.ts` (free) drives the panel, Dusk's glass and "Reduce effects", the blur check, a theme-only plugin written to disk (its picture loads over `tinkr-plugin`), the terminal's resolved colors, and the fallback when the plugin is deleted; it puts the user's appearance settings back.
 
 ## Milestone 7 notes
 The plugin system; the built-in panels moved onto it.

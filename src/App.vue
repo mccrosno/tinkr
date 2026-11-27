@@ -1,24 +1,30 @@
 <script setup lang="ts">
-// Chat-first layout (SPEC.md "Layout"):
+// The window: a titlebar, the docking area, the status bar.
 //
-//   [ sidebar: chats | files ] [ chat (main area) ] [ editor, on demand ]
-//   [ terminal (toggle), under the chat and editor                   ]
+// The dock (DockLayout.vue, dockview) holds five panels: Chats, Files, Chat, Editor and
+// Terminal. Their content lives here and is teleported into the panel's box, or into a
+// hidden "parking" box while the panel isn't in the layout. So content is created once
+// and never rebuilt when panels move, presets switch or a layout is restored.
 //
-// The editor opens when you open a file or Claude edits one, and can be hidden again.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// Presets (SPEC.md "Layout"): "Agent", chat-first and the default, and "Editor", a classic
+// IDE; plus any the user saves. The editor shows when a file opens and the terminal when
+// one starts; both can be hidden again, and keep their place in the layout.
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { ClaudeSidecarProvider } from './agent/claudeSidecar'
 import ChatList from './components/ChatList.vue'
 import ChatView from './components/ChatView.vue'
+import DockLayout from './components/DockLayout.vue'
 import EditorPane from './components/EditorPane.vue'
 import EditorTabs from './components/EditorTabs.vue'
 import FileTree from './components/FileTree.vue'
-import Splitter from './components/Splitter.vue'
+import LayoutMenu from './components/LayoutMenu.vue'
 import StatusBar from './components/StatusBar.vue'
 import TerminalPanel from './components/TerminalPanel.vue'
 import Welcome from './components/Welcome.vue'
 import { useChat } from './stores/chat'
 import { useEditor } from './stores/editor'
+import { useLayout } from './stores/layout'
 import { useReview } from './stores/review'
 import { useTerminal } from './stores/terminal'
 import { useWorkspace } from './stores/workspace'
@@ -29,40 +35,10 @@ const ws = useWorkspace()
 const editor = useEditor()
 const review = useReview()
 const terminal = useTerminal()
+const layout = useLayout()
 
-// Panel sizes and the sidebar toggle, remembered per user (fine if storage is unavailable).
-function stored(key: string, fallback: number) {
-  try {
-    return Number(localStorage.getItem(key)) || fallback
-  } catch {
-    return fallback
-  }
-}
-const treeWidth = ref(stored('tinkr.treeWidth', 240))
-// The chat stays the bigger part: by default the editor gets 40% of the window.
-const editorWidth = ref(stored('tinkr.editorWidth', Math.round(window.innerWidth * 0.4)))
-const terminalHeight = ref(stored('tinkr.terminalHeight', 260))
-const sidebarOpen = ref(stored('tinkr.sidebarOpen', 1) === 1)
-/** Which list the sidebar shows (stored as 1 = chats, 2 = files; same "not 0" rule as below). */
-const sidebarTab = ref<'chats' | 'files'>(stored('tinkr.sidebarTab', 1) === 2 ? 'files' : 'chats')
-watch(sidebarTab, (tab) => {
-  try {
-    localStorage.setItem('tinkr.sidebarTab', tab === 'files' ? '2' : '1')
-  } catch {
-    /* not persisted */
-  }
-})
-watch([treeWidth, editorWidth, terminalHeight, sidebarOpen], ([t, e, h, s]) => {
-  try {
-    localStorage.setItem('tinkr.treeWidth', String(t))
-    localStorage.setItem('tinkr.editorWidth', String(e))
-    localStorage.setItem('tinkr.terminalHeight', String(h))
-    // 1 = open, 2 = closed (not 0: `stored` treats 0 as "missing" and falls back to open).
-    localStorage.setItem('tinkr.sidebarOpen', s ? '1' : '2')
-  } catch {
-    /* not persisted */
-  }
-})
+/** Where content goes while its panel isn't in the layout. */
+const PARKING = '#tk-parking'
 
 /**
  * Ask before leaving the folder if that would discard unsaved edits or kill running
@@ -92,9 +68,9 @@ function leaveFolder() {
 }
 
 /**
- * Open a folder (a path, or pick one). Opening it yourself shows its files in the
- * sidebar; `showFiles: false` keeps the Chats tab (when a chat from another folder is
- * being opened from the list).
+ * Open a folder (a path, or pick one). Opening it yourself brings the Files panel to
+ * the front; `showFiles: false` leaves the panels as they are (when a chat from another
+ * folder is being opened from the Chats list).
  */
 async function openFolder(path?: string, { showFiles = true } = {}) {
   if (!(await confirmLeave())) return
@@ -103,7 +79,7 @@ async function openFolder(path?: string, { showFiles = true } = {}) {
   else await ws.pickAndOpen()
   if (ws.root !== before) {
     leaveFolder()
-    if (showFiles) sidebarTab.value = 'files'
+    if (showFiles) layout.show('files')
   }
 }
 
@@ -132,12 +108,63 @@ async function openChatIn(folder: string | null, sessionId: string) {
   await chat.openChat(sessionId)
 }
 
+// ---------------------------------------------------------------------------
+// Keeping the dock and the stores in agreement.
+// The editor and terminal stores say whether they want to be seen (a file was opened,
+// a terminal started, the user pressed Ctrl+`); the dock shows or hides the panel. The
+// other way round, closing a panel's tab in the dock tells the store it's hidden.
+// ---------------------------------------------------------------------------
+
+const editorWanted = computed(() => editor.panelOpen && editor.tabs.length > 0)
+const terminalWanted = computed(() => terminal.visible && terminal.tabs.length > 0)
+
+watch(editorWanted, (on) => (on ? layout.show('editor') : layout.hide('editor')))
+watch(terminalWanted, (on) => (on ? layout.show('terminal') : layout.hide('terminal')))
+watch(
+  () => layout.visible.editor,
+  (on) => {
+    if (!on && editor.panelOpen) editor.panelOpen = false
+  },
+)
+watch(
+  () => layout.visible.terminal,
+  (on) => {
+    if (!on && terminal.visible) terminal.visible = false
+  },
+)
+
+/** After a preset is laid out: it may show an editor or terminal that has nothing to show. */
+layout.onApplied(() => {
+  if (editorWanted.value) layout.show('editor', { activate: false })
+  else layout.hide('editor')
+  if (terminalWanted.value) layout.show('terminal', { activate: false })
+  else layout.hide('terminal')
+})
+
+const sidebarShown = computed(() => layout.visible.chats || layout.visible.files)
+
+/** Ctrl+B: hide or show the Chats and Files panels together (they share a group by default). */
+function toggleSidebar() {
+  if (sidebarShown.value) {
+    layout.hide('chats')
+    layout.hide('files')
+  } else {
+    layout.show('files', { activate: false })
+    layout.show('chats', { activate: false })
+  }
+}
+
 function toggleTerminal() {
   if (ws.root) terminal.toggle(ws.root)
 }
 
 function toggleEditor() {
-  if (editor.tabs.length) editor.panelOpen = !editor.panelOpen
+  if (!editor.tabs.length) return
+  if (editor.panelOpen && layout.shown.editor) editor.panelOpen = false
+  else {
+    editor.panelOpen = true
+    layout.show('editor') // also brings it to the front if it's a background tab
+  }
 }
 
 // The chat works in the open folder; switching folders starts a new conversation.
@@ -145,15 +172,20 @@ watch(() => ws.root, (root) => chat.setProject(root))
 
 // App shortcuts, from anywhere in the window (Ctrl+S is handled inside the editor):
 // Ctrl/Cmd+O open a folder, Ctrl/Cmd+N new chat, Ctrl+B sidebar, Ctrl+Shift+E editor,
-// Ctrl+` terminal.
+// Ctrl+` terminal, Ctrl+Alt+1..9 layout presets.
 // The terminal lets these keys through instead of sending them to the shell.
 function onKeydown(e: KeyboardEvent) {
   const mod = e.ctrlKey || e.metaKey
   const k = e.key.toLowerCase()
+  // `code`, not `key`: with Alt held, `key` can be another character on some layouts.
+  const digit = /^Digit([1-9])$/.exec(e.code)
   let handled = true
-  if (mod && !e.shiftKey && k === 'o') openFolder()
-  else if (mod && !e.shiftKey && k === 'n') chat.newChat()
-  else if (mod && !e.shiftKey && k === 'b') sidebarOpen.value = !sidebarOpen.value
+  if (mod && e.altKey && !e.shiftKey && digit) {
+    const id = layout.presetForKey(Number(digit[1]))
+    if (id) layout.switchTo(id)
+  } else if (mod && !e.shiftKey && !e.altKey && k === 'o') openFolder()
+  else if (mod && !e.shiftKey && !e.altKey && k === 'n') chat.newChat()
+  else if (mod && !e.shiftKey && !e.altKey && k === 'b') toggleSidebar()
   else if (mod && e.shiftKey && k === 'e') toggleEditor()
   else if (e.ctrlKey && e.code === 'Backquote') toggleTerminal()
   else handled = false
@@ -175,8 +207,13 @@ onMounted(() => {
   chat.connect(new ClaudeSidecarProvider())
   ws.init()
   window.addEventListener('keydown', onKeydown)
+  // A layout change still waiting to be saved (saving waits for a pause) is written when the window closes.
+  window.addEventListener('beforeunload', layout.flush)
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', layout.flush)
+})
 
 // Dev only: hooks for the e2e scripts (folder pickers can't be driven over CDP).
 if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) => openFolder(p) })
@@ -189,47 +226,39 @@ if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) 
       <span v-if="ws.name" class="project" :title="ws.root ?? ''">{{ ws.name }}</span>
       <span class="spacer" />
       <button class="tk-button" title="Open folder (Ctrl+O)" @click="openFolder()">Open folder…</button>
-      <button class="tk-button toggle" title="Show or hide the sidebar (Ctrl+B)" :aria-pressed="sidebarOpen" @click="sidebarOpen = !sidebarOpen">Sidebar</button>
-      <button class="tk-button toggle" title="Show or hide the editor (Ctrl+Shift+E)" :aria-pressed="editor.panelOpen" :disabled="!editor.tabs.length" @click="toggleEditor">Editor</button>
-      <button v-if="ws.root" class="tk-button toggle" title="Show or hide the terminal (Ctrl+`)" :aria-pressed="terminal.visible" @click="toggleTerminal">Terminal</button>
+      <button class="tk-button toggle" title="Show or hide Chats and Files (Ctrl+B)" :aria-pressed="sidebarShown" @click="toggleSidebar">Sidebar</button>
+      <button class="tk-button toggle" title="Show or hide the editor (Ctrl+Shift+E)" :aria-pressed="editorWanted" :disabled="!editor.tabs.length" @click="toggleEditor">Editor</button>
+      <button v-if="ws.root" class="tk-button toggle" title="Show or hide the terminal (Ctrl+`)" :aria-pressed="terminalWanted" @click="toggleTerminal">Terminal</button>
+      <LayoutMenu />
       <button class="tk-button" :disabled="chat.busy || !chat.messages.length" @click="chat.newChat()">New chat</button>
     </header>
 
-    <main class="main">
-      <template v-if="sidebarOpen">
-        <aside class="side" :style="{ width: `${treeWidth}px` }">
-          <div class="tabs" role="tablist" aria-label="Sidebar">
-            <button role="tab" :aria-selected="sidebarTab === 'chats'" @click="sidebarTab = 'chats'">Chats</button>
-            <button role="tab" :aria-selected="sidebarTab === 'files'" @click="sidebarTab = 'files'">Files</button>
-          </div>
-          <ChatList v-if="sidebarTab === 'chats'" class="pane" @open-elsewhere="openChatIn" />
-          <FileTree v-else-if="ws.root" class="pane" @close-folder="closeFolder" />
-          <Welcome v-else class="pane" compact @open="openFolder" />
-        </aside>
-        <Splitter v-model:size="treeWidth" :min="160" :max="520" side="left" label="Resize sidebar" />
-      </template>
-
-      <div class="work">
-        <div class="upper">
-          <section class="chat-area"><ChatView /></section>
-          <template v-if="editor.panelOpen && editor.tabs.length">
-            <Splitter v-model:size="editorWidth" :min="320" :max="1400" side="right" label="Resize editor" />
-            <section class="editor-panel" :style="{ width: `${editorWidth}px` }" data-testid="editor-panel">
-              <EditorTabs @hide="editor.panelOpen = false" />
-              <p v-if="editor.lastError" class="error" role="alert">{{ editor.lastError }}</p>
-              <EditorPane class="editor" />
-            </section>
-          </template>
-        </div>
-        <!-- v-show, not v-if: hiding the panel keeps the shells and their screens. -->
-        <template v-if="terminal.tabs.length">
-          <Splitter v-show="terminal.visible" v-model:size="terminalHeight" :min="100" :max="900" side="bottom" label="Resize terminal" />
-          <TerminalPanel v-show="terminal.visible" class="terminal" :style="{ height: `${terminalHeight}px` }" />
-        </template>
-      </div>
-    </main>
+    <main class="main"><DockLayout /></main>
 
     <StatusBar />
+
+    <!-- Panel content. Each goes into its dock panel, or waits here while that panel isn't in the layout. -->
+    <div id="tk-parking" class="parking" aria-hidden="true" />
+    <Teleport defer :to="layout.hosts.chats ?? PARKING">
+      <ChatList class="pane" @open-elsewhere="openChatIn" />
+    </Teleport>
+    <Teleport defer :to="layout.hosts.files ?? PARKING">
+      <FileTree v-if="ws.root" class="pane" @close-folder="closeFolder" />
+      <Welcome v-else class="pane" compact @open="openFolder" />
+    </Teleport>
+    <Teleport defer :to="layout.hosts.chat ?? PARKING">
+      <ChatView class="pane" />
+    </Teleport>
+    <Teleport defer :to="layout.hosts.editor ?? PARKING">
+      <section class="editor-panel" data-testid="editor-panel">
+        <EditorTabs @hide="editor.panelOpen = false" />
+        <p v-if="editor.lastError" class="error" role="alert">{{ editor.lastError }}</p>
+        <EditorPane class="editor" />
+      </section>
+    </Teleport>
+    <Teleport defer :to="layout.hosts.terminal ?? PARKING">
+      <TerminalPanel class="pane" />
+    </Teleport>
   </div>
 </template>
 
@@ -240,19 +269,11 @@ if (import.meta.env.DEV) Object.assign(window, { __tinkrOpenFolder: (p: string) 
 .project::before { content: '/'; margin-right: 10px; color: var(--tk-border); }
 .spacer { flex: 1; }
 .toggle[aria-pressed='true'] { border-color: var(--tk-accent); }
-.main { flex: 1; min-height: 0; display: flex; }
-.side { flex: none; min-width: 0; display: flex; flex-direction: column; background: var(--tk-surface); }
-.tabs { display: flex; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--tk-border); }
-.tabs button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 4px 8px; color: var(--tk-text-muted); }
-.tabs button[aria-selected='true'] { color: var(--tk-text); border-bottom-color: var(--tk-accent); }
-.pane { flex: 1; min-height: 0; overflow: auto; }
-.work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.upper { flex: 1; min-height: 0; display: flex; }
-/* The chat is the main area: it takes the space the editor doesn't, but never less than 320px. */
-.chat-area { flex: 1; min-width: 320px; }
-.editor-panel { flex: none; min-width: 0; max-width: calc(100% - 320px); display: flex; flex-direction: column; border-left: 1px solid var(--tk-border); }
+.main { flex: 1; min-height: 0; }
+.parking { display: none; }
+/* Teleported into a PanelHost (a flex column), so these fill the panel. */
+.pane { flex: 1; min-height: 0; }
+.editor-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .editor { flex: 1; min-height: 0; }
-/* Never taller than most of the column, so the chat keeps some room. */
-.terminal { flex: none; max-height: calc(100% - 120px); }
 .error { margin: 0; padding: 6px 12px; color: var(--tk-danger); background: var(--tk-danger-bg); font-size: 13px; }
 </style>

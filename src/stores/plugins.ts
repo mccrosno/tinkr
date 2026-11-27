@@ -92,6 +92,8 @@ export function keybindingOf(e: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'alt
 }
 
 export const usePlugins = defineStore('plugins', () => {
+  /** The plugins folder on disk; null until it's known (or if plugins on disk are off). */
+  const dir = ref<string | null>(null)
   const plugins = ref<PluginRecord[]>([])
   const panels = shallowReactive(new Map<string, PanelEntry>())
   const commands = shallowReactive(new Map<string, CommandEntry>())
@@ -320,7 +322,7 @@ export const usePlugins = defineStore('plugins', () => {
   }
 
   return {
-    plugins, panels, commands, actions, presets, themes, log, errors,
+    dir, plugins, panels, commands, actions, presets, themes, log, errors,
     record, upsertPlugin, setState, removePlugin, addLog, clearLog,
     registerPanel, unregisterPanel, setPanelVisible, onPanelRemoved, panelEnabled, panelBadge,
     registerCommand, executeCommand, commandForKey,

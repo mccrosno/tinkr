@@ -1,10 +1,11 @@
 // Runs Claude Agent SDK turns and reports them as protocol events.
 
 import { homedir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { query, type AccountInfo, type CanUseTool, type HookCallback, type ModelInfo, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { Attachment, AuthStatus, EffortLevel, ModelOption, PermissionDecision, SidecarEvent, TurnOutcome } from '../../shared/protocol'
+import type { Attachment, AuthStatus, EffortLevel, ModelOption, PermissionDecision, PluginAction, SidecarEvent, TurnOutcome } from '../../shared/protocol'
 import { messageContent, type ContentBlock } from './attachments'
+import { pluginPrompt, pluginToolServer, type PluginReport } from './pluginTools'
 import { EDIT_TOOLS, decide, describeTool, editTarget, forThisChat, isInside, permissionDetail, readBaseline } from './tools'
 
 export type Emit = (event: SidecarEvent) => void
@@ -93,12 +94,20 @@ export interface TurnInput {
   model?: string
   effort?: EffortLevel
   attachments?: Attachment[]
+  /** Tinkr's plugins folder; with it, Claude can write plugins. */
+  pluginsDir?: string
 }
 
 /** A permission request waiting for the user's answer. */
 interface PendingPermission {
   turnId: string
   resolve: (answer: PermissionDecision | 'cancelled') => void
+}
+
+/** A plugin tool call waiting for the app's report. */
+interface PendingPluginRequest {
+  turnId: string
+  resolve: (report: PluginReport) => void
 }
 
 /** Runs turns; each one is a single `query()` call that resumes the conversation. */
@@ -108,6 +117,10 @@ export class Agent {
   private nextPermission = 0
   /** Edit tool calls we sent a baseline for: tool use id -> absolute path. */
   private editsInFlight = new Map<string, string>()
+  private pluginRequests = new Map<string, PendingPluginRequest>()
+  private nextPluginRequest = 0
+  /** Plugins the user let Claude edit "for this chat": "<session id>/<plugin>". */
+  private pluginGrants = new Set<string>()
 
   constructor(
     private cliPath: () => string | null,
@@ -115,7 +128,7 @@ export class Agent {
   ) {}
 
   async send(turnId: string, resumeSessionId: string | null, text: string, input: TurnInput = {}) {
-    const { cwd, model, effort, attachments = [] } = input
+    const { cwd, model, effort, attachments = [], pluginsDir } = input
     const started = Date.now()
     const finish = (outcome: TurnOutcome, extra: { sessionId?: string | null; costUsd?: number; message?: string } = {}) =>
       this.emit({
@@ -155,7 +168,7 @@ export class Agent {
     const q = query({
       prompt: prompt(),
       options: {
-        ...this.turnOptions(turnId, cliPath, cwd),
+        ...this.turnOptions(turnId, cliPath, cwd, pluginsDir, () => sessionId),
         includePartialMessages: true,
         abortController,
         // "default" is Claude Code's own default; leaving the option out means the same.
@@ -218,13 +231,13 @@ export class Agent {
     } finally {
       endInput()
       this.running.delete(turnId)
-      this.cancelPermissions(turnId)
+      this.cancelWaiting(turnId)
     }
   }
 
   abort(turnId: string) {
     this.running.get(turnId)?.abort()
-    this.cancelPermissions(turnId)
+    this.cancelWaiting(turnId)
   }
 
   /** The user answered a permission request. */
@@ -232,21 +245,47 @@ export class Agent {
     this.permissions.get(requestId)?.resolve(decision)
   }
 
-  private cancelPermissions(turnId: string) {
+  /** The app's report for a plugin tool call. */
+  answerPluginRequest(requestId: string, report: PluginReport) {
+    this.pluginRequests.get(requestId)?.resolve(report)
+  }
+
+  /** The turn is over or being stopped: nothing it's waiting for matters any more. */
+  private cancelWaiting(turnId: string) {
     for (const p of this.permissions.values()) if (p.turnId === turnId) p.resolve('cancelled')
+    for (const p of this.pluginRequests.values()) if (p.turnId === turnId) p.resolve({ text: 'The user stopped this turn.', isError: true })
+  }
+
+  /** Pass a plugin tool call to the app and wait for its report. */
+  async askApp(turnId: string, action: PluginAction, name: string): Promise<PluginReport> {
+    const requestId = `${turnId}-g${++this.nextPluginRequest}`
+    // No time limit: loading a new plugin waits for the user to answer a dialog.
+    const report = await new Promise<PluginReport>((resolveReport) => {
+      this.pluginRequests.set(requestId, { turnId, resolve: resolveReport })
+      this.emit({ type: 'pluginRequest', turnId, requestId, action, name })
+    })
+    this.pluginRequests.delete(requestId)
+    return report
   }
 
   /**
    * Options for a chat turn: Claude Code's full toolset, the user's Claude Code
    * settings and CLAUDE.md files, and Tinkr's permission policy (see `decide`).
-   * `project` is undefined when no folder is open; then Claude can't edit files.
+   * `project` is undefined when no folder is open; then Claude can only edit files in
+   * the plugins folder (if there is one). `sessionId` is read when a request comes in,
+   * since a new chat gets its id after the turn starts. (Public for tests.)
    */
-  private turnOptions(turnId: string, cliPath: string, project: string | undefined): Options {
+  turnOptions(turnId: string, cliPath: string, project: string | undefined, pluginsDir?: string, sessionId: () => string | null = () => null): Options {
+    const cwd = chatFolder(project)
+
     // Permission requests: allow/deny by policy, or ask the user in the chat and wait.
     const canUseTool: CanUseTool = async (toolName, input, { signal, suggestions }) => {
-      const policy = decide(toolName, input, project)
+      const policy = decide(toolName, input, project, pluginsDir)
       if (policy.kind === 'allow') return { behavior: 'allow', updatedInput: input }
       if (policy.kind === 'deny') return { behavior: 'deny', message: policy.message }
+      const { pluginEdit } = policy
+      const grant = pluginEdit && `${sessionId()}/${pluginEdit.plugin ?? ''}`
+      if (grant && this.pluginGrants.has(grant)) return { behavior: 'allow', updatedInput: input }
 
       const requestId = `${turnId}-p${++this.nextPermission}`
       const answer = await new Promise<PermissionDecision | 'cancelled'>((resolveAnswer) => {
@@ -257,8 +296,10 @@ export class Agent {
           turnId,
           requestId,
           toolName,
-          summary: describeTool(toolName, input, project),
+          // A plugin file is named from the plugins folder: "notes/index.js".
+          summary: describeTool(toolName, input, pluginEdit ? pluginsDir : project),
           detail: permissionDetail(toolName, input),
+          ...(pluginEdit ? { pluginEdit } : {}),
         })
       })
       this.permissions.delete(requestId)
@@ -267,6 +308,12 @@ export class Agent {
         return { behavior: 'deny', message: 'The user stopped this turn.', interrupt: true }
       }
       if (answer === 'deny') return { behavior: 'deny', message: 'The user declined this in Tinkr.' }
+      // "For this chat" on a plugin edit covers that one plugin, and Tinkr remembers it
+      // itself: Claude Code's own suggestion would allow every edit from here on.
+      if (grant) {
+        if (answer === 'allowForChat') this.pluginGrants.add(grant)
+        return { behavior: 'allow', updatedInput: input }
+      }
       return {
         behavior: 'allow',
         updatedInput: input,
@@ -278,26 +325,46 @@ export class Agent {
     // (This hook runs before the permission check. If the edit is then denied, the file
     // ends up unchanged and the UI has nothing to review.)
     const beforeEdit: HookCallback = async (input) => {
-      if (input.hook_event_name !== 'PreToolUse' || !project) return {}
+      if (input.hook_event_name !== 'PreToolUse') return {}
       const target = editTarget(input.tool_name, input.tool_input)
       if (!target) return {}
-      const path = resolve(project, target)
-      if (!isInside(path, project)) return {}
-      const before = await readBaseline(path)
-      if (before === undefined) return {} // can't be diffed, so it isn't reviewed
-      this.editsInFlight.set(input.tool_use_id, path)
-      this.emit({ type: 'fileWillChange', turnId, toolUseId: input.tool_use_id, path, before })
-      return {}
+      const path = resolve(cwd, target)
+      if ((project && isInside(path, project)) || (pluginsDir && isInside(path, pluginsDir))) {
+        const before = await readBaseline(path)
+        // undefined = it can't be diffed, so it isn't reviewed
+        if (before !== undefined) {
+          this.editsInFlight.set(input.tool_use_id, path)
+          this.emit({ type: 'fileWillChange', turnId, toolUseId: input.tool_use_id, path, before })
+        }
+      }
+      // In Tinkr's own folder (plugins and settings), insist on the permission check,
+      // and so on Tinkr's policy. Without this, an "accept edits" mode or an allow rule
+      // in the user's Claude Code settings would let a plugin edit through unasked.
+      if (!pluginsDir || !isInside(path, dirname(pluginsDir))) return {}
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask' } }
     }
 
     return {
-      ...baseOptions(cliPath, chatFolder(project)),
+      ...baseOptions(cliPath, cwd),
       tools: { type: 'preset', preset: 'claude_code' },
-      // Without a project there's nowhere to review edits, so leave the edit tools out.
-      disallowedTools: project ? [] : [...EDIT_TOOLS],
+      // With no project and no plugins folder there's nowhere to review edits, so leave
+      // the edit tools out.
+      disallowedTools: project || pluginsDir ? [] : [...EDIT_TOOLS],
       // Load the user's Claude Code settings and CLAUDE.md files, as the CLI would.
       settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: TINKR_PROMPT },
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        append: pluginsDir ? `${TINKR_PROMPT}\n${pluginPrompt(pluginsDir)}` : TINKR_PROMPT,
+      },
+      ...(pluginsDir
+        ? {
+            // Claude can read the plugins folder without asking, and the skill in its
+            // .claude/skills folder is offered in every chat.
+            additionalDirectories: [pluginsDir],
+            mcpServers: { tinkr: pluginToolServer((action, name) => this.askApp(turnId, action, name)) },
+          }
+        : {}),
       // "default" sends everything that isn't clearly safe to `canUseTool`, which
       // applies Tinkr's policy. Read-only tools and safe commands never get there.
       permissionMode: 'default',

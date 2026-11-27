@@ -3,7 +3,8 @@ import App from './App.vue'
 import { ClaudeSidecarProvider } from './agent/claudeSidecar'
 import { pinia } from './pinia'
 import { openFolder } from './app/workspace'
-import { bootPlugins, pluginsReady } from './plugins/boot'
+import { bootPlugins, pluginLoader, pluginsReady } from './plugins/boot'
+import { reportPlugin } from './plugins/report'
 import { useAppearance } from './stores/appearance'
 import { useChat } from './stores/chat'
 import { useEditor } from './stores/editor'
@@ -26,10 +27,12 @@ const chat = useChat()
 const ws = useWorkspace()
 const editor = useEditor()
 const review = useReview()
-ws.onFilesChanged((paths) => {
+// Files changed on disk, in the open folder or the plugins folder.
+function onDiskChange(paths: string[]) {
   editor.onDiskChange(paths)
   review.onDiskChange(paths)
-})
+}
+ws.onFilesChanged(onDiskChange)
 // Claude's edits: the review store keeps baselines; changed files open in the editor so
 // you can watch them change.
 chat.onFileEvent((e) => review.onAgentFile(e))
@@ -38,9 +41,15 @@ review.onChanged(async (path) => {
   await editor.open(path)
 })
 
+// Claude's plugin tools: reload a plugin or report on it.
+chat.setPluginRequestHandler(async (action, name) => {
+  await pluginsReady()
+  return reportPlugin(pluginLoader(), action, name)
+})
+
 chat.connect(new ClaudeSidecarProvider())
 ws.init()
 // Panels, commands and buttons: the built-in plugins, then the ones on disk. The dock waits for them.
-void bootPlugins()
+void bootPlugins(onDiskChange)
 // The theme: once settings.json is read and the plugins' themes are registered.
 void pluginsReady().then(() => useAppearance().start())

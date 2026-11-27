@@ -8,6 +8,8 @@ const props = defineProps<{ request: NonNullable<ChatMessage['permission']> }>()
 const chat = useChat()
 
 const verb = computed(() => {
+  const edit = props.request.pluginEdit
+  if (edit) return edit.plugin ? `edit the plugin ${edit.plugin}` : "edit a file in Tinkr's plugins folder"
   switch (props.request.toolName) {
     case 'Bash':
       return 'run a command'
@@ -43,9 +45,17 @@ const outcome = computed(() => {
       <span v-if="request.state !== 'pending'" class="outcome">{{ outcome }}</span>
     </div>
     <pre v-if="request.detail || request.summary" class="detail">{{ request.detail ?? request.summary }}</pre>
+    <p v-if="request.pluginEdit && request.state === 'pending'" class="note">
+      Plugin code runs inside Tinkr, with access to your files, terminals and Claude. A plugin that's on reloads as soon as
+      it's saved, before you review the change.
+    </p>
     <div v-if="request.state === 'pending'" class="actions">
       <button class="tk-button primary" @click="chat.respondToPermission(request.requestId, 'allow')">Allow</button>
-      <button class="tk-button" title="Also allow requests like this for the rest of the chat" @click="chat.respondToPermission(request.requestId, 'allowForChat')">
+      <button
+        class="tk-button"
+        :title="request.pluginEdit ? 'Allow edits to this plugin for the rest of the chat' : 'Also allow requests like this for the rest of the chat'"
+        @click="chat.respondToPermission(request.requestId, 'allowForChat')"
+      >
         Allow for this chat
       </button>
       <button class="tk-button" @click="chat.respondToPermission(request.requestId, 'deny')">Deny</button>
@@ -57,6 +67,7 @@ const outcome = computed(() => {
 .card { border: 1px solid var(--tk-accent); border-radius: var(--tk-radius); padding: 8px 12px; background: var(--tk-surface); display: flex; flex-direction: column; gap: 6px; }
 .card:not(.pending) { border-color: var(--tk-border); padding: 5px 10px; font-size: 13px; color: var(--tk-text-muted); }
 .card:not(.pending) .detail { display: none; }
+.note { margin: 0; font-size: 12.5px; color: var(--tk-text-muted); }
 .head { display: flex; gap: 8px; }
 .head span:first-child { flex: 1; }
 .outcome { font-size: 12px; }

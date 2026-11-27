@@ -2,11 +2,13 @@
 // through this; Claude (via the sidecar) is the only implementation in v1.
 
 import type {
-  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, TurnOutcome,
+  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, PluginAction,
+  PluginEdit, TurnOutcome,
 } from '@shared/protocol'
 
 export type {
-  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, TurnOutcome,
+  Attachment, AttachmentPreview, AuthStatus, ChatSummary, CliStatus, EffortLevel, HistoryItem, ModelOption, PermissionDecision, PluginAction,
+  PluginEdit, TurnOutcome,
 }
 
 /** What a message is sent with, besides its text. `cwd` omitted = a chat without a folder. */
@@ -16,6 +18,8 @@ export interface SendOptions {
   model?: string
   effort?: EffortLevel
   attachments?: Attachment[]
+  /** Tinkr's plugins folder, so the agent can write plugins. */
+  pluginsDir?: string
 }
 
 /** Provider-neutral events the UI consumes. */
@@ -31,8 +35,10 @@ export type AgentEvent =
   | { type: 'fileWillChange'; turnId: string; toolUseId: string; path: string; before: string | null }
   /** That edit finished; the file on disk may have changed. */
   | { type: 'fileChanged'; turnId: string; toolUseId: string; path: string }
-  | { type: 'permissionRequest'; turnId: string; requestId: string; toolName: string; summary: string; detail?: string }
+  | { type: 'permissionRequest'; turnId: string; requestId: string; toolName: string; summary: string; detail?: string; pluginEdit?: PluginEdit }
   | { type: 'permissionCancelled'; requestId: string }
+  /** The agent wants a plugin reloaded, or its state; answer with `respondToPluginRequest`. */
+  | { type: 'pluginRequest'; turnId: string; requestId: string; action: PluginAction; name: string }
   | { type: 'turnFinished'; turnId: string; sessionId: string | null; outcome: TurnOutcome; durationMs: number; costUsd?: number; message?: string }
   | { type: 'log'; message: string }
 
@@ -49,6 +55,8 @@ export interface AgentProvider {
   abort(turnId: string): Promise<void>
   /** Answer a `permissionRequest` event. */
   respondToPermission(requestId: string, decision: PermissionDecision): Promise<void>
+  /** Answer a `pluginRequest` event with the report the agent reads. */
+  respondToPluginRequest(requestId: string, report: { text: string; isError: boolean }): Promise<void>
   // Conversation history, per folder (`cwd` omitted = chats without a folder).
   /** Past chats, newest first: in one folder, or with `allFolders` every chat Claude Code has stored. */
   listChats(cwd?: string, allFolders?: boolean): Promise<ChatSummary[]>

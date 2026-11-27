@@ -40,6 +40,8 @@ export interface PluginSource {
 export type Approve = (manifest: PluginManifest, dir: string) => Promise<boolean>
 
 const VALID_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
+/** Can a plugin folder be called this? (Letters, digits, `-`, `_`, `.`, not starting with a dot.) */
+export const isPluginName = (name: string) => VALID_NAME.test(name)
 
 interface Loaded {
   handle: PluginHandle
@@ -60,6 +62,8 @@ export class PluginLoader {
    */
   private deferApprovals = true
   private awaiting: string[] = []
+  /** Told which files changed under the plugins folder (editor tabs and reviews follow them). */
+  private fileListeners = new Set<(paths: string[]) => void>()
 
   constructor(
     private source: PluginSource | null,
@@ -120,6 +124,11 @@ export class PluginLoader {
     for (const name of names) await this.serial(name, () => this.discover(name))
   }
 
+  onFilesChanged(listener: (paths: string[]) => void) {
+    this.fileListeners.add(listener)
+    return () => this.fileListeners.delete(listener)
+  }
+
   stop() {
     this.unwatch?.()
     this.unwatch = null
@@ -141,8 +150,13 @@ export class PluginLoader {
       manifest = await this.source!.manifest(name)
       if (manifest.name !== name) throw new Error(`plugin.json says "name": "${manifest.name}", but the folder is "${name}"; they must match`)
     } catch (e) {
-      // A folder without plugin.json (yet: Claude may be writing it) is skipped quietly.
-      if (/not found|no such file|cannot find|os error 2/i.test(String(e))) return
+      if (this.registry.record(name)?.builtIn) return
+      // A folder without plugin.json is skipped quietly: Claude may be about to write it,
+      // or the user rejected the new file (then forget what was loaded from it).
+      if (/not found|no such file|cannot find|os error 2/i.test(String(e))) {
+        if (this.registry.record(name)?.builtIn === false) this.registry.removePlugin(name)
+        return
+      }
       this.registry.upsertPlugin({ name, manifest: { name }, builtIn: false, dir, state: 'error' })
       this.fail(name, e)
       return
@@ -231,6 +245,9 @@ export class PluginLoader {
 
   /** Reload a plugin from disk (its files changed, or the user asked). Its panels keep their place. */
   reload(name: string) {
+    // This reload covers any change the watcher was about to reload for.
+    clearTimeout(this.pending.get(name))
+    this.pending.delete(name)
     return this.serial(name, async () => {
       const panelsBefore = [...this.registry.panels.values()].filter((p) => p.plugin === name).map((p) => p.id)
       this.registry.beginReload(name)
@@ -257,6 +274,7 @@ export class PluginLoader {
 
   /** Changed paths under the plugins folder: reload (or load, or unload) each plugin they belong to. */
   private onDiskChange(paths: string[]) {
+    for (const l of this.fileListeners) l(paths)
     const root = this.source!.dir.replace(/[\\/]+$/, '')
     for (const p of paths) {
       if (p.length <= root.length || p.slice(0, root.length).toLowerCase() !== root.toLowerCase()) continue
@@ -274,6 +292,7 @@ export class PluginLoader {
   }
 
   private async onPluginChanged(name: string) {
+    if (this.registry.record(name)?.builtIn) return // a stray folder named like a built-in
     const names = await this.source!.list().catch(() => null)
     if (names && !names.includes(name)) {
       // The folder is gone: unload it and forget it.

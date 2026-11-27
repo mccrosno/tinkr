@@ -18,11 +18,14 @@ import type {
   HistoryItem,
   ModelOption,
   PermissionDecision,
+  PluginAction,
+  PluginEdit,
   TurnOutcome,
 } from '../agent/types'
 import { LIMITS, formatSize, isImage, readAttachment, type DraftAttachment } from '../chat/attachments'
 import { formatPrompt, parsePrompt, sameRef, type CodeRef } from '../chat/refs'
 import { joinPath, samePath } from '../workspace/fs'
+import { usePlugins } from './plugins'
 
 export type ToolStatus = 'running' | 'done' | 'error'
 export type PermissionState = 'pending' | 'allowed' | 'allowedForChat' | 'denied' | 'cancelled'
@@ -41,12 +44,15 @@ export interface ChatMessage {
   /** tool: a tool call. */
   tool?: { id: string; name: string; summary: string; status: ToolStatus }
   /** permission: a request for the user's OK. */
-  permission?: { requestId: string; toolName: string; summary: string; detail?: string; state: PermissionState }
+  permission?: { requestId: string; toolName: string; summary: string; detail?: string; pluginEdit?: PluginEdit; state: PermissionState }
 }
 
 export type FileEvent = Extract<AgentEvent, { type: 'fileWillChange' | 'fileChanged' }>
 
 export type Connection = 'connecting' | 'connected' | 'disconnected'
+
+/** Does what the agent's plugin tools ask for, and reports back. */
+export type PluginRequestHandler = (action: PluginAction, name: string) => Promise<{ text: string; isError: boolean }>
 
 let nextId = 1
 
@@ -95,6 +101,7 @@ export const useChat = defineStore('chat', () => {
   /** Turns from a chat that was replaced (folder switch); their late events are dropped. */
   const staleTurns = new Set<string>()
   const fileListeners = new Set<(e: FileEvent) => void>()
+  let pluginRequestHandler: PluginRequestHandler | null = null
   /** The model each running turn uses (from `turnStarted`), for its summary line. */
   const turnModels = new Map<string, string>()
 
@@ -220,8 +227,11 @@ export const useChat = defineStore('chat', () => {
           role: 'permission',
           text: '',
           turnId: e.turnId,
-          permission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, detail: e.detail, state: 'pending' },
+          permission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, detail: e.detail, pluginEdit: e.pluginEdit, state: 'pending' },
         })
+        break
+      case 'pluginRequest':
+        void answerPluginRequest(e.requestId, e.action, e.name)
         break
       case 'permissionCancelled': {
         const m = permissionMessage(e.requestId)
@@ -250,6 +260,22 @@ export const useChat = defineStore('chat', () => {
       case 'log':
         addLog(e.message)
         break
+    }
+  }
+
+  /** The agent used a plugin tool: do it, and always answer, since the turn waits for it. */
+  async function answerPluginRequest(requestId: string, action: PluginAction, name: string) {
+    let report: { text: string; isError: boolean }
+    try {
+      if (!pluginRequestHandler) throw new Error('plugins are not available')
+      report = await pluginRequestHandler(action, name)
+    } catch (e) {
+      report = { text: `Tinkr couldn't do that: ${errorText(e)}`, isError: true }
+    }
+    try {
+      await provider.value?.respondToPluginRequest(requestId, report)
+    } catch (e) {
+      addLog(`couldn't answer the agent's plugin request: ${errorText(e)}`)
     }
   }
 
@@ -298,6 +324,7 @@ export const useChat = defineStore('chat', () => {
         model: picked && picked.value !== 'default' ? picked.value : undefined,
         effort: effectiveEffort.value ?? undefined,
         attachments: files.length ? files.map(({ name, mediaType, data }) => ({ name, mediaType, data })) : undefined,
+        pluginsDir: usePlugins().dir ?? undefined,
       })
       activeTurnId.value = finishedTurns.has(turnId) ? null : turnId
     } catch (e) {
@@ -479,6 +506,10 @@ export const useChat = defineStore('chat', () => {
     return () => fileListeners.delete(listener)
   }
 
+  function setPluginRequestHandler(handler: PluginRequestHandler) {
+    pluginRequestHandler = handler
+  }
+
   function newChat() {
     if (busy.value) return
     messages.value = []
@@ -530,6 +561,6 @@ export const useChat = defineStore('chat', () => {
     blocker, busy, canSend, pendingPermissions, streamingId,
     connect, send, stop, respondToPermission, addRef, removeRef, onFileEvent, newChat, setProject, restart, recheck,
     setModel, setEffort, addAttachments, removeAttachment, refreshChats, setAllFolders, openChat, renameChat, deleteChat,
-    setDraft, onAgentEvent,
+    setDraft, onAgentEvent, setPluginRequestHandler,
   }
 })

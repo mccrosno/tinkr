@@ -5,6 +5,7 @@ import { formatPrompt, parsePrompt, type CodeRef } from '../src/chat/refs'
 import type { FileEvent } from '../src/stores/chat'
 import { toAgentEvent } from '../src/agent/claudeSidecar'
 import { useChat } from '../src/stores/chat'
+import { usePlugins } from '../src/stores/plugins'
 
 /** A provider the test drives by hand. */
 class FakeProvider implements AgentProvider {
@@ -17,6 +18,7 @@ class FakeProvider implements AgentProvider {
   historyCalls: string[] = []
   aborted: string[] = []
   answers: [string, PermissionDecision][] = []
+  pluginAnswers: [string, { text: string; isError: boolean }][] = []
   private listener: (e: AgentEvent) => void = () => {}
   private n = 0
   emit(e: AgentEvent) {
@@ -61,6 +63,9 @@ class FakeProvider implements AgentProvider {
   async respondToPermission(requestId: string, decision: PermissionDecision) {
     this.answers.push([requestId, decision])
   }
+  async respondToPluginRequest(requestId: string, report: { text: string; isError: boolean }) {
+    this.pluginAnswers.push([requestId, report])
+  }
   async restart() {}
 }
 
@@ -78,6 +83,42 @@ beforeEach(async () => {
   chat = useChat()
   fake = new FakeProvider()
   await chat.connect(fake)
+})
+
+describe('plugin authoring', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+
+  test('messages carry the plugins folder once it is known', async () => {
+    usePlugins().dir = '/home/me/.config/tinkr/plugins'
+    await chat.send('make a plugin')
+    expect(fake.sent[0].pluginsDir).toBe('/home/me/.config/tinkr/plugins')
+  })
+
+  test('a plugin request is done by the handler and answered, errors included', async () => {
+    chat.setPluginRequestHandler(async (action, name) => {
+      if (name === 'bad') throw new Error('exploded')
+      return { text: `${action} ${name}`, isError: false }
+    })
+    fake.emit({ type: 'pluginRequest', turnId: 't', requestId: 'g1', action: 'reload', name: 'notes' })
+    fake.emit({ type: 'pluginRequest', turnId: 't', requestId: 'g2', action: 'status', name: 'bad' })
+    await tick()
+    expect(fake.pluginAnswers).toEqual([
+      ['g1', { text: 'reload notes', isError: false }],
+      ['g2', { text: "Tinkr couldn't do that: exploded", isError: true }],
+    ])
+  })
+
+  test('without a handler the agent still gets an answer', async () => {
+    fake.emit({ type: 'pluginRequest', turnId: 't', requestId: 'g1', action: 'reload', name: 'notes' })
+    await tick()
+    expect(fake.pluginAnswers[0][1].isError).toBe(true)
+  })
+
+  test('a permission card knows it is about a plugin', async () => {
+    await chat.send('go')
+    fake.emit({ type: 'permissionRequest', turnId: 'turn1', requestId: 'p1', toolName: 'Write', summary: 'notes/index.js', pluginEdit: { plugin: 'notes' } })
+    expect(chat.messages.at(-1)?.permission?.pluginEdit).toEqual({ plugin: 'notes' })
+  })
 })
 
 describe('chat store', () => {

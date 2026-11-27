@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // The Plugins panel: every plugin, built-in or on disk, with its state. Plugins on disk
-// can be turned on or off, reloaded, and (if broken) handed to Claude to fix.
+// can be turned on or off, reloaded, and (if broken) handed to Claude to fix. New ones
+// can be asked of Claude.
 import { computed } from 'vue'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { pluginLoader, pluginsDir } from '../plugins/boot'
-import { askClaudeToFix } from '../plugins/fixRequest'
+import { pluginLoader } from '../plugins/boot'
+import { askClaudeToCreate, askClaudeToFix } from '../plugins/chatRequests'
 import { usePlugins, type PluginRecord } from '../stores/plugins'
 
 const plugins = usePlugins()
@@ -21,7 +22,7 @@ const STATE: Record<PluginRecord['state'], string> = {
 }
 
 function openFolder() {
-  const dir = pluginsDir()
+  const dir = plugins.dir
   if (dir) revealItemInDir(dir).catch((e) => plugins.addLog('tinkr', 'error', `couldn't open ${dir}: ${String(e)}`))
 }
 </script>
@@ -29,13 +30,14 @@ function openFolder() {
 <template>
   <section class="plugins" data-testid="plugins-panel">
     <header class="bar">
-      <span class="hint">Plugins live in <code>{{ pluginsDir() ?? '~/.config/tinkr/plugins' }}</code> and reload when their files change.</span>
+      <span class="hint">Plugins live in <code>{{ plugins.dir ?? '~/.config/tinkr/plugins' }}</code> and reload when their files change.</span>
       <button class="tk-button" @click="openFolder">Open folder</button>
+      <button class="tk-button primary" :disabled="!plugins.dir" @click="askClaudeToCreate()">New plugin with Claude</button>
     </header>
     <div class="scroll">
       <h2>Installed</h2>
       <p v-if="!onDisk.length" class="empty">
-        None yet. A plugin is a folder with a <code>plugin.json</code> and an ES module; ask Claude to write one.
+        None yet. Ask Claude for a new panel, command or theme, and it writes the plugin.
       </p>
       <ul>
         <li v-for="p in onDisk" :key="p.name" :class="p.state" :data-plugin="p.name">
@@ -77,7 +79,7 @@ function openFolder() {
 
 <style scoped>
 .plugins { flex: 1; min-height: 0; display: flex; flex-direction: column; font-size: 13px; }
-.bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--tk-border); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--tk-border); }
 .hint { flex: 1; color: var(--tk-text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 12px 12px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tk-text-muted); margin: 12px 0 6px; }

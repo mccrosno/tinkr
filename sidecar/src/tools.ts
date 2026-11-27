@@ -1,10 +1,13 @@
 // Helpers for Claude's tool calls: which tools edit files, whether a path is inside the
-// project, short labels for the UI, and the permission policy. Pure functions (plus one
-// file read), so they're unit-tested without running Claude.
+// project or the plugins folder, short labels for the UI, and the permission policy.
+// Pure functions (plus one file read), so they're unit-tested without running Claude.
 
 import { readFile, stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
+import type { PluginEdit } from '../../shared/protocol'
+import { PLUGIN_TOOLS } from './pluginTools'
 
 /** Tools that write files. Their edits are allowed inside the project and reviewed afterwards. */
 export const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -25,6 +28,15 @@ export function isInside(path: string, root: string, windows = process.platform 
   const norm = (p: string) => (windows ? resolve(p).toLowerCase() : resolve(p))
   const rel = relative(norm(root), norm(path))
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * Which plugin a file in the plugins folder belongs to. `plugin` is null for a file
+ * that isn't in a plugin: the folder's own CLAUDE.md, or anything under ".claude".
+ */
+export function pluginOf(path: string, pluginsDir: string): PluginEdit {
+  const [first, ...rest] = relative(resolve(pluginsDir), resolve(path)).split(sep)
+  return { plugin: rest.length && !first.startsWith('.') ? first : null }
 }
 
 /** Show paths relative to the project when they're inside it. */
@@ -55,7 +67,7 @@ export function describeTool(name: string, input: unknown, cwd?: string): string
     case 'Agent':
       return clip(str('description'))
     default:
-      return ''
+      return PLUGIN_TOOLS.has(name) ? clip(str('name')) : ''
   }
 }
 
@@ -70,28 +82,46 @@ export function permissionDetail(name: string, input: unknown): string | undefin
 export type PolicyDecision =
   | { kind: 'allow' }
   | { kind: 'deny'; message: string }
-  /** Ask the user in the chat. */
-  | { kind: 'ask' }
+  /** Ask the user in the chat. `pluginEdit` is set for an edit in the plugins folder. */
+  | { kind: 'ask'; pluginEdit?: PluginEdit }
+
+/** Tinkr's own settings file, beside the plugins folder. It records which plugins the user turned on. */
+const settingsFile = (pluginsDir: string) => join(dirname(pluginsDir), 'settings.json')
 
 /**
  * What to do when Claude Code asks for permission (it already allows read-only tools
  * and safe commands by itself, so this only sees the rest).
- * - Edits inside the project: allow. The user reviews them as diffs afterwards.
- * - Edits anywhere else: deny. Tinkr can only show and undo changes inside the project.
+ * - Tinkr's plugin tools: allow. A new plugin still needs the user's OK to run.
+ * - Edits to Tinkr's settings file: deny, or Claude could approve its own plugin.
+ * - Edits in the plugins folder: ask, even if it's inside the project. Plugin code runs
+ *   in Tinkr as soon as it's saved, before the user has reviewed the diff.
+ * - Other edits inside the project: allow. The user reviews them as diffs afterwards.
+ * - Edits anywhere else: deny. Tinkr only lets Claude change what it can show for review.
  * - Everything else: ask the user.
  */
-export function decide(toolName: string, input: unknown, project: string | undefined): PolicyDecision {
+export function decide(toolName: string, input: unknown, project: string | undefined, pluginsDir?: string): PolicyDecision {
+  if (PLUGIN_TOOLS.has(toolName)) return { kind: 'allow' }
   const target = editTarget(toolName, input)
-  if (target !== null || EDIT_TOOLS.has(toolName)) {
-    if (project && target && isInside(target, project)) return { kind: 'allow' }
-    return {
-      kind: 'deny',
-      message: project
-        ? `Tinkr only lets Claude edit files inside the open project folder (${project}).`
-        : 'No project folder is open in Tinkr, so Claude cannot edit files in this chat.',
+  if (target === null && !EDIT_TOOLS.has(toolName)) return { kind: 'ask' }
+
+  if (target !== null) {
+    // A relative path means relative to the chat's folder.
+    const path = resolve(project ?? homedir(), target)
+    if (pluginsDir) {
+      if (isInside(path, settingsFile(pluginsDir))) {
+        return { kind: 'deny', message: "Tinkr manages its settings file itself; Claude can't edit it." }
+      }
+      if (isInside(path, pluginsDir)) return { kind: 'ask', pluginEdit: pluginOf(path, pluginsDir) }
     }
+    if (project && isInside(path, project)) return { kind: 'allow' }
   }
-  return { kind: 'ask' }
+
+  return {
+    kind: 'deny',
+    message: project
+      ? `Tinkr only lets Claude edit files inside the open project folder (${project})${pluginsDir ? ` and the plugins folder (${pluginsDir})` : ''}.`
+      : `No project folder is open in Tinkr, so Claude cannot edit files in this chat${pluginsDir ? ` outside the plugins folder (${pluginsDir})` : ''}.`,
+  }
 }
 
 /**

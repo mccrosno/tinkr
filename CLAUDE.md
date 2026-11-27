@@ -12,6 +12,8 @@ Tinkr is a modular agentic code editor: a Tauri 2 desktop app combining a Claude
 
 Milestones 1 to 10 are done and merged into `main`: 1 (chat), 2 (file tree + CodeMirror editor), 3 (terminal), 4 (Claude edits files with review, "Ask Claude" selection menu, chat-first layout), 5 (Desktop-style chat: history, chats without a folder, attachments, model/effort picker), 6 (docking with dockview, layout presets), 7 (plugin system; built-ins are plugins), 8 (themes and backgrounds), 9 (interface refresh) and 10 (in-app plugin authoring by Claude).
 
+**First, read [`docs/next-changes.md`](docs/next-changes.md):** changes the author asked for before the next milestone (chat modes, app settings), and what hasn't been checked yet. Delete that file and this paragraph once they're done.
+
 **Next: Milestone 11** (git install for plugins). Branch from `main` (`milestone-11`); each milestone is merged through a GitHub pull request with a merge commit.
 
 Still open from Milestone 9 (details in "Milestone 9 notes"): the title bar's window behaviour and dragging a tab onto the rail need a check by hand, macOS and Linux are untested, and the paid chat, history and review checks haven't been run against the new interface.

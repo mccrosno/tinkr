@@ -113,10 +113,10 @@ export function activate(api: TinkrApi) {
 }
 ```
 - Panels use `mount(el, ctx) => cleanup`: framework-agnostic, no build step needed. `mount` runs once per registration; the dock moves the element, it never rebuilds it. Optional esbuild step for Vue/React plugins.
-- Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu.
+- Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu (where each one appears: see "Interface").
 - Commands have optional keybindings and are listed in the command palette (Ctrl+Shift+P). A plugin's ids are prefixed with its name (`notes.refresh`); built-ins keep bare ids.
 - Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 11.
-- Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands, shortcuts and buttons) are plugins using the same API.
+- Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands and shortcuts) are plugins using the same API.
 - Hot reload on file change. Plugin load errors surface in the Console panel AND are fed to the agent ("Ask Claude to fix" puts the error and the plugin's folder in the message box).
 - Plugins are trusted code. A plugin Tinkr hasn't seen before doesn't run until the user approves it in a dialog that says so; the answer is kept in settings.json.
 
@@ -266,7 +266,7 @@ What shipped, and decisions made along the way:
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
 
 ## Milestone 9 notes
-The interface refresh.
+The interface refresh. Notes for earlier milestones describe the interface as it was then (titlebar buttons, status bar, fixed columns).
 
 - **Removed:** the status bar, and the built-in title bar buttons (Open folder, Sidebar, Editor, Terminal, New chat, Plugins, Console, Theme). Each is still reachable by a shortcut, a rail icon, a menu or the command palette. `PanelDefinition.closable` is ignored: every panel can be closed.
 - **Closed panels' places** (`src/layout/places.ts`): dockview forgets a closed panel, so the dock records its tab-mates and which side of which neighbor it was on, and saves that inside the layout (`tinkrPlaces`). Reopening tries a tab-mate, then the side, then the panel's default location.
@@ -275,7 +275,7 @@ The interface refresh.
 - **Dragging a tab onto the rail** works through dockview's `getPanelData()`; the rail only accepts its panel drags.
 - **Title bar:** `data-tauri-drag-region="deep"` makes everything that isn't a button drag the window. `tauri.macos.conf.json` keeps macOS's own window buttons (overlay title bar). Because Tauri merges config arrays by replacing them, that file and `tauri.unfocused.conf.json` repeat the whole window entry.
 - **Themes:** `--tk-window` is now the darker color around the cards; a theme that sets only `bg` gets a window color derived from it. A theme's CSS that styled `.statusbar` no longer matches anything.
-- **Tests:** unit tests for icons, closed panels' places, chat date groups, the rail, restoring and hiding in the dock, and the gap sizes. The free e2e checks (layout, plugins, appearance, terminal, editor) pass on Windows. `editor.e2e.ts` includes one short Claude turn.
+- **Tests:** unit tests for icons, closed panels' places, chat date groups, the rail, restoring and hiding in the dock, and the gap sizes. The e2e checks for layout, plugins, appearance, terminal and editor pass on Windows; `editor.e2e.ts` includes one short Claude turn, and it last ran before the final small interface fixes. A last change to how the layout and appearance scripts wait for settings is typechecked but not run.
 - **Not checked yet:** dragging the window by the title bar, double-click to maximize and the three window buttons (the e2e can't use the real mouse); dragging a tab onto the rail with a real mouse (the check dispatches the drag events in the page); Windows 11's snap-layout flyout on the maximize button, which a custom button is not expected to get without native code; macOS and Linux; the paid chat, history and review checks.
 
 ## Milestone 8 notes

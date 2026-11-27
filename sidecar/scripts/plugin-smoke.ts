@@ -1,16 +1,18 @@
 // Live check of Claude writing plugins, without the app (uses your real Claude Code login:
-// two or three short turns on Haiku, a few cents).
+// three short turns on Haiku, a few cents).
 // Usage: bun sidecar/scripts/plugin-smoke.ts
 //
 // Everything happens in temporary folders. Checks: Claude writes a plugin in a chat
 // without a folder; the user is asked once ("allow for this chat") and gets review
-// baselines; Claude calls reload_plugin and reads the answer; and in a project whose own
-// Claude Code settings allow every edit, a plugin edit is still asked about, and denying
-// it leaves the file alone, as does an attempt to edit Tinkr's settings.json.
+// baselines; Claude calls reload_plugin and reads the answer. Then, with Claude Code
+// told to accept every edit (accept-edits mode and allow rules for Edit and Write, either
+// of which skips the permission check by itself): a plugin edit is still asked about and
+// denying it leaves the file alone, and Tinkr's settings.json is refused.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { PermissionDecision, SidecarEvent } from '../../shared/protocol'
 import { Agent } from '../src/agent'
 import { findCli } from '../src/cli'
@@ -26,10 +28,8 @@ const plugins = join(base, 'tinkr', 'plugins')
 const settings = join(base, 'tinkr', 'settings.json')
 const project = join(base, 'project')
 mkdirSync(plugins, { recursive: true })
-mkdirSync(join(project, '.claude'), { recursive: true })
+mkdirSync(project)
 writeFileSync(settings, '{ "plugins": {} }\n')
-// A user's own "allow every edit" rule: Tinkr must still ask about plugin files.
-writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Edit', 'Write'] } }))
 const kit = new URL('../../src/plugins/', import.meta.url)
 writeFileSync(join(plugins, 'CLAUDE.md'), readFileSync(new URL('authoring/guide.md', kit)))
 writeFileSync(join(plugins, 'tinkr-api.d.ts'), readFileSync(new URL('api.ts', kit)))
@@ -41,8 +41,10 @@ const agent = new Agent(
   (e) => {
     events.push(e)
     if (e.type === 'permissionRequest') {
-      console.log('  asked:', e.toolName, e.summary, JSON.stringify(e.pluginEdit ?? null), '->', e.pluginEdit ? answerWith : 'deny')
-      queueMicrotask(() => agent.respond(e.requestId, e.pluginEdit ? answerWith : 'deny'))
+      // Reading is harmless (and Claude must read a file before replacing it); refuse the rest.
+      const answer: PermissionDecision = e.pluginEdit ? answerWith : e.toolName === 'Read' ? 'allow' : 'deny'
+      console.log('  asked:', e.toolName, e.summary, JSON.stringify(e.pluginEdit ?? null), '->', answer)
+      queueMicrotask(() => agent.respond(e.requestId, answer))
     }
     if (e.type === 'toolUse') console.log('  tool:', e.name, e.summary)
     if (e.type === 'pluginRequest') {
@@ -51,6 +53,23 @@ const agent = new Agent(
     }
   },
 )
+// Add options to a turn, and note why Tinkr refused anything.
+let extra: Partial<Options> = {}
+let refusals: string[] = []
+const turnOptions = agent.turnOptions.bind(agent)
+agent.turnOptions = (...args) => {
+  const options = turnOptions(...args)
+  const canUseTool = options.canUseTool!
+  return {
+    ...options,
+    ...extra,
+    canUseTool: async (...call) => {
+      const result = await canUseTool(...call)
+      if (result?.behavior === 'deny') refusals.push(result.message)
+      return result
+    },
+  }
+}
 const sessions: { id: string; folder: string }[] = []
 async function turn(id: string, text: string, cwd?: string) {
   events = []
@@ -76,12 +95,15 @@ try {
   const index = join(plugins, 'hello', 'index.js')
   const before = readFileSync(index, 'utf8')
   answerWith = 'deny'
+  extra = { permissionMode: 'acceptEdits', allowedTools: ['Edit', 'Write'] }
   await turn('t2', `Add the comment "// changed" as the first line of ${index}. If that's refused, stop.`, project)
-  check(of('permissionRequest').some((e) => e.pluginEdit?.plugin === 'hello'), "still asked, despite the project's allow-every-edit rule")
+  check(of('permissionRequest').some((e) => e.pluginEdit?.plugin === 'hello'), 'still asked, despite accept-edits mode and allow rules')
   check(readFileSync(index, 'utf8') === before, 'denied: the file is unchanged')
 
-  await turn('t3', `Use the Write tool to replace ${settings} with {}. If that's refused, stop and don't try another way.`, project)
-  check(readFileSync(settings, 'utf8') === '{ "plugins": {} }\n', "Tinkr's settings.json can't be written")
+  refusals = []
+  await turn('t3', `Read ${settings}, then use the Write tool to replace its contents with {}. If that's refused, stop and don't try another way.`, project)
+  check(refusals.some((m) => m.includes('settings file')), "Tinkr refused the write to its settings.json")
+  check(readFileSync(settings, 'utf8') === '{ "plugins": {} }\n', 'settings.json is unchanged')
   console.log('\nAll checks passed.')
 } finally {
   for (const s of sessions) await deleteChat(s.id, s.folder).catch((e) => console.log('  (chat not deleted:', String(e), ')'))

@@ -17,8 +17,10 @@ commands, buttons, layout presets and themes. If `CLAUDE.local.md` exists here, 
 
 ## How to write or change a plugin
 
-1. Create `<name>/plugin.json` and `<name>/index.js` (or edit the existing files). The folder
+1. Create `<name>/index.js` and `<name>/plugin.json` (or edit the existing files). The folder
    name may use letters, digits, `-`, `_` and `.`, and must equal `"name"` in `plugin.json`.
+   For a new plugin, write `plugin.json` last: Tinkr loads the folder as soon as it appears,
+   and code that isn't there yet shows up as an error.
 2. Call the `reload_plugin` tool with the folder name. It loads the plugin and reports its
    state, what it registered and every error. (Without that tool, for example in a terminal,
    Tinkr reloads the plugin when its files change and shows errors in its Console panel.)

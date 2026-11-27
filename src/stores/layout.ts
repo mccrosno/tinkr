@@ -7,13 +7,16 @@
 // the config folder with the settings API in Milestone 7.
 
 import { defineStore } from 'pinia'
-import { computed, reactive, ref, shallowReactive, shallowRef } from 'vue'
-import { BUILT_IN_PRESETS, PANEL_IDS, type BuiltInPresetId, type DockHost, type PanelId } from '../layout/dock'
+import { computed, reactive, ref, shallowRef } from 'vue'
+import { BUILT_IN_PANELS, BUILT_IN_PRESETS, type BuiltInPresetId, type DockHost, type PanelId } from '../layout/dock'
+import { usePlugins } from './plugins'
 
 export interface Preset {
   id: string
   name: string
   builtIn: boolean
+  /** Added by a plugin (`api.layout.registerPreset`): can't be deleted from the menu. */
+  fromPlugin?: string
 }
 
 /** A preset the user saved: `base` is the arrangement at the time, for "Reset layout". */
@@ -62,20 +65,16 @@ export const useLayout = defineStore('layout', () => {
   const custom = ref<CustomPreset[]>(readJson<CustomPreset[]>(store, KEY_CUSTOM, []))
   const activeId = ref(store.getItem(KEY_ACTIVE) ?? 'agent')
   /** Which panels are on screen right now: visible and the active tab of their group. */
-  const shown = reactive(Object.fromEntries(PANEL_IDS.map((id) => [id, false])) as Record<PanelId, boolean>)
+  const shown = reactive(Object.fromEntries(BUILT_IN_PANELS.map((id) => [id, false])) as Record<PanelId, boolean>)
   /** Which panels are in the layout in a visible group (maybe as a background tab). */
-  const visible = reactive(Object.fromEntries(PANEL_IDS.map((id) => [id, false])) as Record<PanelId, boolean>)
-  /**
-   * Each panel's element in the dock, where its content is moved (DockLayout.vue
-   * teleports it there). Missing = the panel isn't in the layout right now.
-   */
-  const hosts = shallowReactive<Partial<Record<PanelId, HTMLElement>>>({})
+  const visible = reactive(Object.fromEntries(BUILT_IN_PANELS.map((id) => [id, false])) as Record<PanelId, boolean>)
   const appliedListeners = new Set<() => void>()
   let applying = false
   let saveTimer: ReturnType<typeof setTimeout> | undefined
 
   const presets = computed<Preset[]>(() => [
     ...BUILT_IN_PRESETS.map((p) => ({ id: p.id, name: p.name, builtIn: true })),
+    ...usePlugins().presets.map((p) => ({ id: p.id, name: p.name, builtIn: false, fromPlugin: p.plugin })),
     ...custom.value.map((p) => ({ id: p.id, name: p.name, builtIn: false })),
   ])
   const active = computed(() => presets.value.find((p) => p.id === activeId.value) ?? presets.value[0])
@@ -88,9 +87,13 @@ export const useLayout = defineStore('layout', () => {
   }
 
   function refreshShown() {
-    for (const id of PANEL_IDS) {
+    const registry = usePlugins()
+    const ids = new Set<PanelId>([...BUILT_IN_PANELS, ...registry.panels.keys(), ...(host.value?.panelIds() ?? [])])
+    for (const id of ids) {
       shown[id] = host.value?.isShown(id) ?? false
       visible[id] = host.value?.isVisible(id) ?? false
+      // Panels hear about their own visibility (the plugin API's `ctx.visible`).
+      registry.setPanelVisible(id, shown[id])
     }
   }
 
@@ -120,8 +123,9 @@ export const useLayout = defineStore('layout', () => {
   /** The preset's starting arrangement. */
   function applyBase(id: string) {
     const h = host.value!
-    const c = custom.value.find((p) => p.id === id)
-    if (c && h.restore(c.base)) return h.setHomeRules('agent')
+    const c = custom.value.find((p) => p.id === id) ?? usePlugins().presets.find((p) => p.id === id)
+    const base = c && ('base' in c ? c.base : c.layout)
+    if (c && h.restore(base)) return h.setHomeRules('agent')
     h.build(isBuiltIn(id) ? id : 'agent')
   }
 
@@ -149,6 +153,11 @@ export const useLayout = defineStore('layout', () => {
     host.value = h
     if (!presets.value.some((p) => p.id === activeId.value)) activeId.value = 'agent'
     h.onChange(onDockChange)
+    // A plugin that's unloaded for good takes its panel out of the layout.
+    usePlugins().onPanelRemoved((id) => {
+      h.remove(id)
+      refreshShown()
+    })
     apply(activeId.value)
   }
 
@@ -186,7 +195,7 @@ export const useLayout = defineStore('layout', () => {
     return id
   }
 
-  /** Delete a saved preset (built-ins can't be). Deleting the active one switches to Agent. */
+  /** Delete a saved preset (built-ins and plugins' presets can't be). Deleting the active one switches to Agent. */
   function remove(id: string) {
     if (isBuiltIn(id) || !custom.value.some((p) => p.id === id)) return
     if (id === activeId.value) switchTo('agent')
@@ -194,6 +203,9 @@ export const useLayout = defineStore('layout', () => {
     persistCustom()
     store.removeItem(keyState(id))
   }
+
+  /** The current arrangement in dockview's JSON (for "copy layout as JSON" / plugin presets). */
+  const snapshot = () => host.value?.snapshot() ?? null
 
   /** The preset for Ctrl+Alt+<n> (1-based, in menu order). */
   const presetForKey = (n: number) => presets.value[n - 1]?.id ?? null
@@ -219,7 +231,7 @@ export const useLayout = defineStore('layout', () => {
   }
 
   return {
-    presets, active, activeId, shown, visible, hosts,
-    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, show, hide, toggle, onApplied, saveNow, flush,
+    presets, active, activeId, shown, visible,
+    useStorage, attach, switchTo, reset, saveAs, remove, presetForKey, snapshot, show, hide, toggle, onApplied, saveNow, flush,
   }
 })

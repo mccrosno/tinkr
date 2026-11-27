@@ -1,6 +1,9 @@
-// The docking layout (dockview): which panels exist, the built-in presets, and the
-// rules for showing and hiding a panel. `Dock` wraps dockview's API behind the small
-// `DockHost` interface the layout store uses, so the store is unit-tested with a fake.
+// The docking layout (dockview): the built-in presets and the rules for showing and
+// hiding a panel. `Dock` wraps dockview's API behind the small `DockHost` interface the
+// layout store uses, so the store is unit-tested with a fake.
+//
+// Panels come from the plugin registry (the built-in ones are plugins too): the dock
+// asks it for a panel's title, close button and default location (`PanelInfo`).
 //
 // Hiding a panel hides its whole group (`group.api.setVisible(false)`) instead of
 // removing the panel, so it comes back in the same place and size. The one exception
@@ -8,19 +11,23 @@
 // panel is closed instead and comes back at its "home" position.
 
 import type { AddPanelOptions, DockviewApi, IDockviewPanel } from 'dockview-vue'
+import type { PanelLocation } from '../plugins/api'
 
-export type PanelId = 'chats' | 'files' | 'chat' | 'editor' | 'terminal'
+/** A panel's id: a built-in one below, or "<plugin>.<id>". */
+export type PanelId = string
 
-export const PANELS: Record<PanelId, { title: string; closable: boolean }> = {
-  chats: { title: 'Chats', closable: true },
-  files: { title: 'Files', closable: true },
-  // The main window: it has no close button (see the "pinned" tab in DockLayout.vue).
-  chat: { title: 'Chat', closable: false },
-  editor: { title: 'Editor', closable: true },
-  terminal: { title: 'Terminal', closable: true },
+/** The built-in panels the presets are made of. */
+export const BUILT_IN_PANELS = ['chats', 'files', 'chat', 'editor', 'terminal'] as const
+
+/** What the dock needs to know about a panel. */
+export interface PanelInfo {
+  title: string
+  closable: boolean
+  location: PanelLocation
 }
 
-export const PANEL_IDS = Object.keys(PANELS) as PanelId[]
+/** dockview's component for every panel; DockLayout.vue renders it as a PanelHost. */
+export const HOST_COMPONENT = 'host'
 
 /** The built-in presets. Their ids are stable: saved arrangements are stored under them. */
 export const BUILT_IN_PRESETS = [
@@ -39,6 +46,10 @@ export interface DockHost {
   isShown(id: PanelId): boolean
   /** In the layout and in a visible group (it may be a background tab). */
   isVisible(id: PanelId): boolean
+  /** Take a panel out of the layout (its plugin is gone). */
+  remove(id: PanelId): void
+  /** The ids of the panels in the layout. */
+  panelIds(): PanelId[]
   /** The arrangement as JSON (dockview's own format), to save. */
   snapshot(): unknown
   /** Load a saved arrangement. Returns false if it couldn't be used (the dock is then rebuilt). */
@@ -68,7 +79,11 @@ export class Dock implements DockHost {
   /** Which built-in preset's rules decide where a missing panel is added. */
   private homeRules: BuiltInPresetId = 'agent'
 
-  constructor(private api: DockviewApi) {}
+  /** `info` is the registry's view of a panel; undefined = not registered (yet). */
+  constructor(
+    private api: DockviewApi,
+    private info: (id: PanelId) => PanelInfo | undefined,
+  ) {}
 
   setHomeRules(preset: BuiltInPresetId) {
     this.homeRules = preset
@@ -79,11 +94,14 @@ export class Dock implements DockHost {
   }
 
   private add(id: PanelId, position: AddPanelOptions['position'], extra: Partial<AddPanelOptions> = {}) {
+    const info = this.info(id) ?? { title: id, closable: true, location: 'right' as const }
     return this.api.addPanel({
       id,
-      component: id,
-      title: PANELS[id].title,
-      tabComponent: PANELS[id].closable ? undefined : 'pinned',
+      component: HOST_COMPONENT,
+      params: { panel: id },
+      title: info.title,
+      // The chat (closable: false) gets a tab without a close button (DockLayout.vue).
+      tabComponent: info.closable ? undefined : 'pinned',
       ...(position ? { position } : {}),
       ...extra,
     } as AddPanelOptions)
@@ -103,9 +121,22 @@ export class Dock implements DockHost {
     if (id === 'editor') {
       return this.homeRules === 'editor' ? { referencePanel: 'chat', direction: 'left' } : { referencePanel: 'chat', direction: 'right' }
     }
-    // Terminal: under the editor in the Editor preset, else along the whole bottom.
-    if (this.homeRules === 'editor' && has('editor')) return { referencePanel: 'editor', direction: 'below' }
-    return { direction: 'below' }
+    if (id === 'terminal') {
+      // Under the editor in the Editor preset, else along the whole bottom.
+      if (this.homeRules === 'editor' && has('editor')) return { referencePanel: 'editor', direction: 'below' }
+      return { direction: 'below' }
+    }
+    // A plugin's panel: by its declared location, next to the built-in panel that lives there.
+    switch (this.info(id)?.location ?? 'right') {
+      case 'left':
+        return has('files') ? { referencePanel: 'files', direction: 'within' } : { direction: 'left' }
+      case 'bottom':
+        return has('terminal') ? { referencePanel: 'terminal', direction: 'within' } : { direction: 'below' }
+      case 'center':
+        return has('chat') ? { referencePanel: 'chat', direction: 'within' } : undefined
+      default:
+        return has('chat') ? { referencePanel: 'chat', direction: 'right' } : { direction: 'right' }
+    }
   }
 
   show(id: PanelId, { activate = true } = {}) {
@@ -123,8 +154,18 @@ export class Dock implements DockHost {
       if (activate) existing.api.setActive()
       return
     }
-    const size = id === 'terminal' ? { initialHeight: TERMINAL_HEIGHT } : id === 'editor' ? { initialWidth: editorWidth() } : { initialWidth: SIDEBAR_WIDTH }
-    this.add(id, this.home(id), { ...size, inactive: !activate })
+    const location = this.info(id)?.location
+    const size =
+      id === 'terminal' || location === 'bottom'
+        ? { initialHeight: TERMINAL_HEIGHT }
+        : id === 'editor'
+          ? { initialWidth: editorWidth() }
+          : location === 'right'
+            ? { initialWidth: 360 }
+            : { initialWidth: SIDEBAR_WIDTH }
+    const added = this.add(id, this.home(id), { ...size, inactive: !activate })
+    // The panel it was put next to may be hidden; a new panel should be seen.
+    if (!added.group.api.isVisible) added.group.api.setVisible(true)
   }
 
   hide(id: PanelId) {
@@ -145,6 +186,14 @@ export class Dock implements DockHost {
     return !!p && p.group.api.isVisible
   }
 
+  remove(id: PanelId) {
+    this.panel(id)?.api.close()
+  }
+
+  panelIds() {
+    return this.api.panels.map((p) => p.id)
+  }
+
   snapshot() {
     return this.api.toJSON()
   }
@@ -157,8 +206,8 @@ export class Dock implements DockHost {
     }
     // A layout without the chat isn't usable (it may come from an older version).
     if (!this.panel('chat')) return false
-    // Panels Tinkr doesn't know (from a newer version, say) are dropped.
-    for (const p of [...this.api.panels]) if (!(p.id in PANELS)) p.api.close()
+    // Panels nothing has registered (a plugin that's gone or disabled) are dropped.
+    for (const p of [...this.api.panels]) if (!this.info(p.id)) p.api.close()
     return true
   }
 

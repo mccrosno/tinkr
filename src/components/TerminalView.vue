@@ -8,6 +8,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import '@xterm/xterm/css/xterm.css'
+import { usePlugins } from '../stores/plugins'
 import { useTerminal } from '../stores/terminal'
 import { terminalFont, terminalTheme } from '../terminal/theme'
 
@@ -44,8 +45,11 @@ function onKey(e: KeyboardEvent) {
   }
   // Paste: let the browser's paste event happen; xterm.js reads it from there.
   if (mod && k === 'v') return false
-  // App shortcuts: toggle the terminal panel, open a folder.
+  // App shortcuts go to Tinkr: toggle the terminal (Ctrl+`), open a folder (Ctrl+O), and any
+  // command bound with Shift or Alt (e.g. Ctrl+Shift+P). Plain Ctrl+<letter> stays with
+  // the shell, where readline and editors use it (Ctrl+B, Ctrl+N, ...).
   if (mod && (e.key === '`' || (k === 'o' && !e.shiftKey))) return false
+  if (mod && (e.shiftKey || e.altKey) && usePlugins().commandForKey(e)) return false
   return true
 }
 

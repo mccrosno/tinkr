@@ -23,3 +23,8 @@ code, pre, kbd { font-family: var(--tk-font-mono); font-size: 0.92em; }
 .tk-button:hover:not(:disabled) { border-color: var(--tk-text-muted); }
 .tk-button.primary { background: var(--tk-accent); border-color: var(--tk-accent); color: var(--tk-on-accent); }
 .tk-button.primary:hover:not(:disabled) { background: var(--tk-accent-hover); }
+
+/* A panel's content box (the element a panel's `mount` receives) is a flex column that
+   fills the panel; `tk-fill` on a child makes it take the rest of the space. */
+.tk-panel-root { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tk-fill { flex: 1; min-height: 0; }

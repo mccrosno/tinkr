@@ -33,7 +33,7 @@ Webview (Vue core + plugins) <-- Tauri IPC/events --> Rust core <-- stdio JSON l
 Rust core modules (keep to these):
 1. Window and config
 2. Sidecar manager (spawn, restart, relay messages)
-3. File watcher (also drives plugin hot reload)
+3. File watcher and plugin files (watching drives plugin hot reload; `plugins.rs` serves plugin modules to the webview over a `tinkr-plugin` URI scheme and opens the plugins folder to the fs scope)
 4. PTY
 5. Host API permissions (Tauri capabilities)
 
@@ -61,20 +61,22 @@ Rust core modules (keep to these):
 ## Plugin system (core of the project)
 Location: `~/.config/tinkr/plugins/<name>/` with `plugin.json` and an ES module entry.
 
-Manifest declares contributions: `panel`, `action` (button in a slot), `command`, `theme`, `layout`.
+The manifest names the plugin and its entry module, and asks for permissions; contributions are registered in code (the manifest can list them for display). The full, documented API is `src/plugins/api.ts` (no imports, so it ships to plugin authors as-is).
 
 ```ts
 export function activate(api: TinkrApi) {
-  api.panels.register({ id: 'notes', title: 'Notes', mount(el, ctx) { /* any framework or vanilla */ return () => {} } })
-  api.actions.register({ slot: 'toolbar', icon: '...', run() {} })
+  api.panels.register({ id: 'notes', title: 'Notes', location: 'right', mount(el, ctx) { /* any framework or vanilla */ return () => {} } })
+  api.commands.register({ id: 'refresh', title: 'Notes: refresh', keybinding: 'Ctrl+Alt+R', run() {} })
+  api.actions.register({ id: 'go', slot: 'titlebar', title: 'Notes', run: () => api.layout.show('notes.notes') })
 }
 ```
-- Panels use `mount(el, ctx) => cleanup`: framework-agnostic, no build step needed. Optional esbuild step for Vue/React plugins.
-- Slots: titlebar, sidebar, bottom panel, statusbar, chat toolbar.
-- Host API: fs, pty, agent, git, layout, settings, notifications (Rust-backed, permission-gated).
-- Built-ins (Editor, Chat, File Tree, Terminal, Diff Review) are plugins using the same API.
-- Hot reload on file change. Plugin load errors surface in a console panel AND are fed to the agent.
-- Plugins are trusted code. Install dialog must say so.
+- Panels use `mount(el, ctx) => cleanup`: framework-agnostic, no build step needed. `mount` runs once per registration; the dock moves the element, it never rebuilds it. Optional esbuild step for Vue/React plugins.
+- Panels have a default `location` (left, right, bottom, center); the user can drag them anywhere. Action slots: titlebar, statusbar, chat toolbar, and the selection menu.
+- Commands have optional keybindings and are listed in the command palette (Ctrl+Shift+P). A plugin's ids are prefixed with its name (`notes.refresh`); built-ins keep bare ids.
+- Host API: workspace (files: permission `fs`), editor, agent (`agent`), terminal (`pty`), layout (incl. presets), settings (per plugin, in `~/.config/tinkr/settings.json`), notifications, log. Permissions limit what each plugin is handed; they're not a security boundary (plugins are trusted code in the same webview). Git is Milestone 10.
+- Built-ins (Chat, Chats, Files, Editor with diff review, Terminal, Console, Plugins, and "core": the app's commands, shortcuts and buttons) are plugins using the same API.
+- Hot reload on file change. Plugin load errors surface in the Console panel AND are fed to the agent ("Ask Claude to fix" puts the error and the plugin's folder in the message box).
+- Plugins are trusted code. A plugin Tinkr hasn't seen before doesn't run until the user approves it in a dialog that says so; the answer is kept in settings.json.
 
 ### Claude-authored plugins
 The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.ts` (typed API), and a skill describing the contribution types. A `reload_plugin` tool / error feedback loop lets Claude iterate on its own plugins.
@@ -95,7 +97,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 4. Claude edits files, with review: file tools and permission requests in `AgentProvider`, live diffs with accept/reject/comment, the selection menu ("Ask Claude" / "Request changes"), and the chat-first layout (editor opens on demand). **Done** (see "Milestone 4 notes" below).
 5. Chat like Claude Desktop: conversation history (reopen and continue past chats), chats without a project folder, attachments (images and files), model and effort picker. **Done** (see "Milestone 5 notes" below).
 6. Docking layout + saved layouts ("Agent" chat-first default, "Editor"). **Done** (see "Milestone 6 notes" below).
-7. Plugin loader, slots, hot reload (move built-ins onto the plugin API).
+7. Plugin loader, slots, hot reload (move built-ins onto the plugin API). **Done** (see "Milestone 7 notes" below).
 8. Themes and backgrounds.
 9. In-app plugin authoring by Claude.
 10. Git install for plugins.
@@ -215,6 +217,21 @@ What shipped, and decisions made along the way:
 - **Focus fix:** the chat used to move focus to its input whenever a reply ended, even if the user had moved to the editor or terminal. It now does so only if focus was still in the chat.
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
+
+## Milestone 7 notes
+The plugin system; the built-in panels moved onto it.
+
+- **Loading code:** the webview can't `import()` from disk, and the asset protocol can't make a hot reload fetch fresh copies of the files an entry imports. So Rust serves plugin files over a custom URI scheme (`src-tauri/src/plugins.rs`, part of core module 3): `tinkr-plugin://localhost/<plugin>/<version>/<path>` (`http://tinkr-plugin.localhost/...` on Windows). The version segment is ignored when reading and bumped on every reload, so every file of the plugin is new to the browser and relative imports work. Only plain path segments are accepted (no `..`, roots or drive letters; Rust unit tests); responses carry CORS (module imports cross origins) and `no-store`.
+- **Folder and settings:** Rust creates `~/.config/tinkr/plugins` and adds `~/.config/tinkr` to the fs scope at startup, so the webview lists plugins, reads `plugin.json`, watches the folder and writes `settings.json` there (approvals and per-plugin settings, written 300 ms after a change; an unparsable file is left alone).
+- **Registry and API:** `src/stores/plugins.ts` holds plugins, panels, commands, actions, layout presets and the Console log. `src/plugins/host.ts` builds each plugin's `TinkrApi`: ids prefixed with the plugin name, everything registered tracked and undone on unload, `agent`/`fs`/`pty` parts replaced by functions that throw "needs X in permissions" unless plugin.json asks for them. File access refuses paths outside the open folder and any `..`.
+- **Panels are mounted once** into a persistent element (`.tk-panel-root`, a flex column); `PanelHost` moves it into the dock and back to a hidden parking box. Built-in Vue panels each run as a small Vue app sharing the Pinia instance (`src/pinia.ts`). Milestone 6's Teleports are gone. Dock panels all use one dockview component (`host`, the panel id in params); the old per-panel component names still load saved layouts.
+- **Loader** (`src/plugins/loader.ts`, disk access behind `PluginSource`): built-ins first, then plugins on disk; the dock waits for both before laying out the saved arrangement (so plugin panels keep their places across restarts). New plugins found at startup are asked about after the window is laid out; later ones right away. The watcher reloads a plugin 250 ms after its files stop changing (one reload per burst), loads new folders, unloads deleted ones. During a reload the plugin's panels keep their place in the dock; panels it no longer registers are closed. One operation per plugin at a time.
+- **Shell:** App.vue is just the titlebar (the `titlebar` action slot + Layout menu), the dock, the status bar (`statusbar` slot), the command palette and toasts. Keyboard shortcuts are command keybindings; the terminal lets through Ctrl+`, Ctrl+O and bindings with Shift or Alt, and keeps plain Ctrl+<letter> for the shell. The folder actions moved to `src/app/workspace.ts`; the message box draft moved into the chat store (so `api.agent.setDraft` and "Ask Claude to fix" can fill it).
+- **New panels:** Console (plugin logs and errors, "Ask Claude to fix") and Plugins (state, turn on/off, reload, open the folder). Status bar buttons open them; the Console button lights up while there are errors.
+- **Example:** `examples/plugins/word-count` (panel, selection action, command with keybinding, settings, a relative import, agent).
+- **Fixed along the way:** spreading a permission-guarded object read every property, so with a throwing proxy every plugin without `fs` failed to load (caught by the unit tests; now plain functions that throw when called). Built-in panels didn't fill their panel once they were separate Vue apps (`tk-fill`). In e2e scripts, a `\r` inside `Input.insertText` doesn't press Enter.
+- **Not done yet:** layouts are still in localStorage (settings.json is ready for them); a plugin's settings have no UI; `api.git` waits for Milestone 10; themes are Milestone 8.
+- **Tests:** unit tests for the loader (approval asked once and remembered, deferred at startup, refusals, load errors undone, bad manifests, half-written folders, hot reload with one reload per burst, panels kept or removed, deleted folders, built-ins), the API (prefixes, duplicates, disposal, permissions, file access limits, settings, panel mount/visibility/cleanup, a throwing mount) and keybindings/URLs; Rust tests for the path rules. `e2e/plugins.e2e.ts` (free) writes real plugins into the plugins folder and covers the palette, loading, buttons in every slot, keybindings, settings, hot reload of an imported file, the error/Console/"Ask Claude to fix" path, recovery, permissions, a plugin left off, and deleting one; it removes them and their settings afterwards.
 
 ## Milestone 6 notes
 Docking and layout presets, with `dockview-vue` 8.10 (spike 2 used 8.9).

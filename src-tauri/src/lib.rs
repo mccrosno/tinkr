@@ -1,4 +1,5 @@
 mod config;
+mod plugins;
 mod pty;
 mod sidecar;
 
@@ -14,6 +15,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         // Native "Open folder" dialog.
         .plugin(tauri_plugin_dialog::init())
+        // Plugin code, served to the webview from ~/.config/tinkr/plugins (see plugins.rs).
+        .register_uri_scheme_protocol("tinkr-plugin", plugins::serve)
         // Register the shared state before anything can use it.
         .manage(sidecar::SidecarState::default())
         .manage(pty::PtyState::default())
@@ -21,6 +24,11 @@ pub fn run() {
             // Start the sidecar when the app launches. A failure is logged rather than
             // fatal, so the UI can still open and offer a restart.
             if let Err(e) = sidecar::start(app.handle()) {
+                eprintln!("[tinkr] {e}");
+            }
+            // The plugins folder, and access to it for the webview. Without it Tinkr
+            // still runs, with only its built-in panels.
+            if let Err(e) = plugins::setup(app.handle()) {
                 eprintln!("[tinkr] {e}");
             }
             Ok(())
@@ -32,6 +40,7 @@ pub fn run() {
             config::get_config,
             config::open_project,
             config::close_project,
+            plugins::plugins_dir_path,
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,

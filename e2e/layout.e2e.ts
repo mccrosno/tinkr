@@ -61,7 +61,7 @@ try {
   await sleep(600)
   await js(`localStorage.removeItem('tinkr.layout.active'); localStorage.removeItem('tinkr.layout.state.agent'); localStorage.removeItem('tinkr.layout.state.editor'); location.reload()`)
   await sleep(1500)
-  await until('dock ready', `!!${dock} && ${layout}.hosts.chat !== undefined`, 30_000)
+  await until('dock ready', `!!${dock} && !!document.querySelector("[data-panel=chat] .chat")`, 30_000)
 
   // 1. Agent: chat in the middle, Chats and Files stacked on the left, editor and terminal hidden.
   const g1 = await groups()
@@ -91,10 +91,15 @@ try {
   await until('edit made', `document.querySelector('[data-panel=editor] .cm-content').innerText.includes('// typed')`)
   await key('`', 'Backquote', 192, CTRL)
   await until('terminal shown', `${layout}.shown.terminal && ${store('terminal')}.active?.status === 'running'`, 20_000)
-  await sleep(800)
-  await cdp.send('Input.insertText', { text: 'echo layout-check\r' })
+  // Type only once the shell has the keyboard (else the text lands in the editor), and
+  // press Enter as a key: a "\r" inside inserted text doesn't run the command.
+  await until('terminal focused', `!!document.activeElement?.closest('[data-panel=terminal]')`, 10_000)
+  await cdp.send('Input.insertText', { text: 'echo ("layout" + "-check")' })
+  for (const type of ['keyDown', 'keyUp'] as const)
+    await cdp.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
   const screenHas = (s: string) =>
     `[...document.querySelectorAll('[data-panel=terminal] .xterm-rows')].some(r => r.textContent.includes(${JSON.stringify(s)}))`
+  // The command is typed as "layout" + "-check", so only its output contains "layout-check".
   await until('shell output', screenHas('layout-check'), 10_000)
   const termBox = (await box('terminal'))!
   if (!(termBox[1] > chatBox2[1])) throw new Error(`terminal ${termBox} should be below`)
@@ -170,7 +175,7 @@ try {
   await sleep(600) // past the save delay
   await js(`location.reload()`)
   await sleep(1500)
-  await until('reloaded', `!!${dock} && ${layout}.hosts.chat !== undefined`, 30_000)
+  await until('reloaded', `!!${dock} && !!document.querySelector("[data-panel=chat] .chat")`, 30_000)
   if ((await js<string>(`${layout}.activeId`)) !== customId) throw new Error('active preset not remembered')
   const width = await js<number>(`Math.round(${dock}.getPanel('chats').group.api.width)`)
   if (Math.abs(width - 300) > 2) throw new Error('arrangement not restored after reload: ' + width)

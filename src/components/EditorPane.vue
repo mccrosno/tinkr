@@ -17,12 +17,14 @@ import { tinkrTheme } from '../editor/theme'
 import type { RefPurpose } from '../chat/refs'
 import { useChat } from '../stores/chat'
 import { useEditor, type Tab } from '../stores/editor'
+import { usePlugins } from '../stores/plugins'
 import { useReview } from '../stores/review'
 import { useWorkspace } from '../stores/workspace'
 import { relativeTo } from '../workspace/fs'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 
 const editor = useEditor()
+const plugins = usePlugins()
 const review = useReview()
 const chat = useChat()
 const ws = useWorkspace()
@@ -196,11 +198,36 @@ async function clipboard(action: 'cut' | 'copy' | 'paste') {
   view.focus()
 }
 
+/** Plugins' "selection" actions, given the selected lines (a selectionRef without the purpose). */
+function pluginItems(): MenuItem[] {
+  const path = editor.activePath
+  if (!view || !path) return []
+  const r = selectionRef(view.state, path, path, 'question')
+  const selection = { path, fromLine: r.fromLine, toLine: r.toLine, text: r.text }
+  return plugins.actionsIn('selection').map((a, i) => ({
+    label: a.def.title,
+    separator: i === 0,
+    disabled: (() => {
+      try {
+        return a.def.isEnabled ? !a.def.isEnabled() : false
+      } catch {
+        return true
+      }
+    })(),
+    run: () => {
+      Promise.resolve()
+        .then(() => a.def.run(selection))
+        .catch((e) => plugins.addLog(a.plugin, 'error', `action "${a.key}" failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`))
+    },
+  }))
+}
+
 function menuItems(): MenuItem[] {
   const empty = view?.state.selection.main.empty ?? true
   return [
     { label: empty ? 'Ask Claude about this line' : 'Ask Claude', hint: 'Ctrl+L', run: () => ask('question') },
     { label: 'Request changes', hint: 'Ctrl+Shift+L', run: () => ask('change') },
+    ...pluginItems(),
     { label: 'Cut', hint: 'Ctrl+X', disabled: empty, separator: true, run: () => clipboard('cut') },
     { label: 'Copy', hint: 'Ctrl+C', disabled: empty, run: () => clipboard('copy') },
     { label: 'Paste', hint: 'Ctrl+V', run: () => clipboard('paste') },

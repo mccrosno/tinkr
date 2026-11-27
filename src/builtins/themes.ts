@@ -71,7 +71,6 @@ function activate(api: TinkrApi) {
       a.select(a.themes[(i + 1) % a.themes.length].id)
     },
   })
-  api.actions.register({ id: 'appearance', slot: 'statusbar', order: 5, title: 'Theme', tooltip: 'Themes and effects', run: () => api.layout.show('appearance') })
 }
 
 export const themes: BuiltInPlugin = {

@@ -1,5 +1,5 @@
-// The "core" built-in plugin: Tinkr's own commands and shortcuts, the titlebar and
-// statusbar buttons, and keeping the editor and terminal panels in step with their
+// The "core" built-in plugin: Tinkr's own commands and shortcuts, the title bar
+// buttons, and keeping the editor and terminal panels in step with their
 // stores. Registered through the plugin API like everything else, so a plugin can call
 // any of these commands (e.g. api.commands.execute('workspace.openFolder', path)).
 
@@ -14,6 +14,7 @@ import { useChat } from '../stores/chat'
 import { useEditor } from '../stores/editor'
 import { useLayout } from '../stores/layout'
 import { usePlugins } from '../stores/plugins'
+import { useRail } from '../stores/rail'
 import { useTerminal } from '../stores/terminal'
 import { useWorkspace } from '../stores/workspace'
 
@@ -24,6 +25,7 @@ function activate(api: TinkrApi) {
   const terminal = useTerminal()
   const ws = useWorkspace()
   const plugins = usePlugins()
+  const rail = useRail()
   const command = api.commands.register
   const action = api.actions.register
 
@@ -119,6 +121,7 @@ function activate(api: TinkrApi) {
       }
     },
   })
+  command({ id: 'view.toggleRail', title: 'Show or hide the side bar', keybinding: 'Ctrl+Shift+B', run: () => rail.toggleCollapsed() })
   command({
     id: 'editor.toggle',
     title: 'Show or hide the editor',
@@ -188,7 +191,7 @@ function activate(api: TinkrApi) {
     },
   })
 
-  // --- Titlebar and statusbar buttons -------------------------------------------
+  // --- Titlebar buttons -----------------------------------------------------------
   const run = (id: string) => () => api.commands.execute(id)
   action({ id: 'openFolder', slot: 'titlebar', order: 10, title: 'Open folder…', tooltip: 'Open folder (Ctrl+O)', run: run('workspace.openFolder') })
   action({
@@ -228,17 +231,6 @@ function activate(api: TinkrApi) {
     tooltip: 'New chat (Ctrl+N)',
     run: run('chat.new'),
     isEnabled: () => !chat.busy && chat.messages.length > 0,
-  })
-  action({ id: 'plugins', slot: 'statusbar', order: 10, title: 'Plugins', tooltip: 'Installed plugins', run: run('view.plugins') })
-  action({
-    id: 'console',
-    slot: 'statusbar',
-    order: 20,
-    title: 'Console',
-    tooltip: 'Plugin messages and errors',
-    run: run('view.console'),
-    // Lit up while there are errors to look at.
-    isActive: () => plugins.log.some((l) => l.level === 'error'),
   })
 }
 

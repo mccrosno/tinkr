@@ -89,7 +89,7 @@
    spellings of backdrop-filter, for WebKitGTK and WKWebView. */
 .tk-glass .dv-groupview,
 .tk-glass .titlebar,
-.tk-glass .statusbar {
+.tk-glass .rail {
   -webkit-backdrop-filter: blur(var(--tk-blur));
   backdrop-filter: blur(var(--tk-blur));
 }

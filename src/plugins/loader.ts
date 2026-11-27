@@ -4,13 +4,15 @@
 //
 // A plugin Tinkr hasn't seen before doesn't run until the user approves it: plugins
 // are trusted code with access to the files, terminals and Claude. The answer is
-// remembered in settings.json.
+// remembered in settings.json. It's asked again if a plugin starts asking to run a
+// program the user hasn't agreed to.
 //
 // Disk access and `import()` go through `PluginSource`, so tests can feed plugins in.
 
 import { usePlugins } from '../stores/plugins'
 import { useSettings } from '../stores/settings'
 import type { PluginManifest, PluginModule, ThemeFile } from './api'
+import { programsOf, type ApprovalRequest } from './approval'
 import { createApi, type PluginHandle } from './host'
 
 /** A plugin compiled into Tinkr. */
@@ -36,8 +38,8 @@ export interface PluginSource {
   watch(onChange: (paths: string[]) => void): Promise<() => void>
 }
 
-/** Asks the user whether a newly found plugin may run. */
-export type Approve = (manifest: PluginManifest, dir: string) => Promise<boolean>
+/** Asks the user whether a plugin may run (and run the programs it asks for). */
+export type Approve = (manifest: PluginManifest, dir: string, request: ApprovalRequest) => Promise<boolean>
 
 const VALID_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/
 /** Can a plugin folder be called this? (Letters, digits, `-`, `_`, `.`, not starting with a dot.) */
@@ -169,14 +171,17 @@ export class PluginLoader {
 
     const settings = useSettings()
     let approved = settings.approval(name)
-    if (approved === null) {
+    const wanted = programsOf(manifest)
+    const unapproved = wanted.filter((p) => !settings.approvedPrograms(name).includes(p))
+    // Ask about a new plugin, and again when one that's on asks to run another program.
+    if (approved === null || (approved && unapproved.length)) {
       this.registry.setState(name, 'awaiting-approval')
       if (this.deferApprovals) {
         this.awaiting.push(name)
         return
       }
-      approved = await this.approve(manifest, dir)
-      settings.setApproval(name, approved)
+      approved = await this.approve(manifest, dir, { programs: unapproved, again: approved === true })
+      settings.setApproval(name, approved, approved ? wanted : undefined)
     }
     if (!approved) {
       this.registry.setState(name, 'disabled')

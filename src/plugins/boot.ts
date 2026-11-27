@@ -10,6 +10,7 @@ import { usePlugins } from '../stores/plugins'
 import { useSettings } from '../stores/settings'
 import { joinPath, parentOf, tauriFs } from '../workspace/fs'
 import type { PluginManifest } from './api'
+import { approvalPrompt, type ApprovalRequest } from './approval'
 import { KIT } from './authoring/kit'
 import { writeKit } from './authoring/write'
 import { diskSource } from './diskSource'
@@ -26,15 +27,9 @@ export const pluginLoader = () => loader
 export const pluginsReady = () => ready
 
 /** Plugins are trusted code: say so before running one (SPEC.md "Plugin system"). */
-async function approveDialog(manifest: PluginManifest, pluginDir: string) {
-  const name = manifest.displayName ?? manifest.name
-  const perms = manifest.permissions?.length ? `\n\nIt asks to use: ${manifest.permissions.join(', ')}.` : ''
-  return ask(
-    `Tinkr found a new plugin, "${name}", in\n${pluginDir}\n\n` +
-      `Plugins run inside Tinkr as trusted code: they can read and change your files, ` +
-      `run commands and talk to Claude. Only turn on plugins you trust.${perms}\n\nTurn it on?`,
-    { title: 'New plugin', kind: 'warning', okLabel: 'Turn on', cancelLabel: 'Keep off' },
-  )
+async function approveDialog(manifest: PluginManifest, pluginDir: string, request: ApprovalRequest) {
+  const { title, message, okLabel } = approvalPrompt(manifest, pluginDir, request)
+  return ask(message, { title, kind: 'warning', okLabel, cancelLabel: 'Keep off' })
 }
 
 /** `onFilesChanged` hears about every change under the plugins folder. */

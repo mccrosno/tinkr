@@ -6,7 +6,7 @@
 //                bun tauri dev --config src-tauri/tauri.unfocused.conf.json
 //   then:        bun run e2e
 
-import { connect, sleep } from './cdp'
+import { connect, deleteTestChats, sleep } from './cdp'
 
 const cdp = await connect(Number(process.argv[2] ?? 9222))
 const js = <T = unknown>(expr: string) => cdp.evaluate<T>(expr)
@@ -75,6 +75,7 @@ if ((await js<string>(`${chat}.messages.at(-1).done?.outcome`)) !== 'aborted') t
 pass('Stop aborts a running reply')
 
 // 5. New chat clears the conversation.
+const testSession = await js<string | null>(`${chat}.sessionId`) // deleted at the end
 await js(`[...document.querySelectorAll('.titlebar button')].find(b => b.textContent.includes('New chat')).click()`)
 await sleep(100)
 if ((await js<number>(`${chat}.messages.length`)) !== 0 || (await js(`${chat}.sessionId`)) !== null) throw new Error('new chat did not reset')
@@ -86,6 +87,9 @@ await until('reconnected', `${chat}.connection === 'connected' && ${chat}.cli?.s
 await sleep(1500) // make sure the old process's exit event didn't mark us disconnected
 if ((await js<string>(`${chat}.connection`)) !== 'connected') throw new Error('stale exit event disconnected the UI')
 pass('Restart agent reconnects')
+
+// Leave no trace in the history list.
+await deleteTestChats(js, { ids: [testSession] })
 
 console.log('\n' + results.join('\n'))
 cdp.close()

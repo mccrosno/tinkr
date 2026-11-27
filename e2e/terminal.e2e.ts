@@ -10,7 +10,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connect, sleep } from './cdp'
+import { connect, deleteTestChats, sleep } from './cdp'
 
 const cdp = await connect(Number(process.argv[2] ?? 9222))
 const js = <T = unknown>(expr: string) => cdp.evaluate<T>(expr)
@@ -93,8 +93,8 @@ try {
 
   // 4. Resizing the panel resizes the PTY, and the shell sees the new size.
   const rowsBefore = await js<number>(`document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length`)
-  await js(`document.querySelector('[aria-label="Resize terminal"]').focus()`)
-  for (let i = 0; i < 2; i++) await key('ArrowUp', 'ArrowUp', 38, 8 /* shift = 50px */)
+  // (Through the dock's API: dockview's drag handles don't take keyboard input.)
+  await js(`(() => { const g = window.__tinkrDock.getPanel('terminal').group.api; g.setSize({ height: g.height + 100 }) })()`)
   await until('more rows', `document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length > ${rowsBefore}`, 5000)
   const rowsAfter = await js<number>(`document.querySelectorAll('[data-testid=terminal-${await activeKey()}] .xterm-rows > div').length`)
   await js(`document.querySelector('[data-testid=terminal-${await activeKey()}] textarea').focus()`)
@@ -113,7 +113,7 @@ try {
 
   // 6. Hiding the panel keeps the shell and its screen; showing it again restores both.
   await key('`', 'Backquote', 192, CTRL)
-  await until('hidden', `${store}.visible === false && getComputedStyle(document.querySelector('[data-testid=terminal-panel]')).display === 'none'`)
+  await until('hidden', `${store}.visible === false && !window.__tinkr.pinia._s.get('layout').visible.terminal`)
   if (!alive(pid1)) throw new Error('hiding the panel killed the shell')
   await key('`', 'Backquote', 192, CTRL)
   await until('shown', `${store}.visible === true`)
@@ -163,6 +163,8 @@ try {
   console.log(`\n${results.length} checks passed.`)
 } finally {
   await js(`${store}.closeAll()`).catch(() => {})
+  await deleteTestChats(js, { folder: dir }).catch(() => {})
+  await js(`window.__tinkr.pinia._s.get('workspace').closeFolder()`).catch(() => {})
   cdp.close()
   try {
     rmSync(dir, { recursive: true, force: true })

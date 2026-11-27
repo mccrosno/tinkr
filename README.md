@@ -4,7 +4,7 @@ A modular, agentic code editor. Think Claude Desktop and VSCode in one window, b
 
 Tinkr ships with a minimal core. Everything else, including the editor, chat, file tree, terminal, and diff review, is a plugin. Claude can write new plugins for you while the app is running.
 
-> **Status:** Milestone 5 of 10. A chat-first app that works as a Claude Desktop replacement: past chats in the sidebar (reopen, continue, rename, delete), including the ones you started in the Claude Code CLI or Claude Desktop's Code tab, from every folder; chats with or without a project folder; images, PDFs and text files by paste, drop or the Attach button; and a model and effort picker. In a project folder, every edit Claude makes shows up as a diff you accept or reject chunk by chunk, and shell commands ask first. Select code and press Ctrl+L (or right-click) to ask Claude about it or request changes. There's a file tree, an editor that opens beside the chat when needed, and a terminal (Ctrl+`). Next: docking and saved layouts. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
+> **Status:** Milestone 6 of 10. Panels dock anywhere: drag a tab to split or stack it, switch between the chat-first "Agent" layout and a classic "Editor" layout (Ctrl+Alt+1/2), or save your own. A chat-first app that works as a Claude Desktop replacement: past chats in the sidebar (reopen, continue, rename, delete), including the ones you started in the Claude Code CLI or Claude Desktop's Code tab, from every folder; chats with or without a project folder; images, PDFs and text files by paste, drop or the Attach button; and a model and effort picker. In a project folder, every edit Claude makes shows up as a diff you accept or reject chunk by chunk, and shell commands ask first. Select code and press Ctrl+L (or right-click) to ask Claude about it or request changes. There's a file tree, an editor that opens beside the chat when needed, and a terminal (Ctrl+`). Next: the plugin system. See [SPEC.md](SPEC.md) for the full design and the [roadmap](#roadmap) below.
 
 ## Features (planned)
 
@@ -59,7 +59,7 @@ Plugins can contribute panels, actions, commands, themes, and layouts. They are 
 3. ✅ Terminal
 4. ✅ Claude edits files with review (live diffs, accept/reject/comment), "Ask Claude" selection menu, chat-first layout
 5. ✅ Desktop-style chat: history (shared with the Claude Code CLI and Desktop's Code tab), chats without a folder, attachments, model and effort picker
-6. Docking layout + saved layouts
+6. ✅ Docking layout + saved layout presets
 7. Plugin loader, slots, hot reload
 8. Themes and backgrounds
 9. In-app plugin authoring by Claude

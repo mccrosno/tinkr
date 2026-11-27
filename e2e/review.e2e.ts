@@ -11,7 +11,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connect, sleep } from './cdp'
+import { connect, deleteTestChats, sleep } from './cdp'
 
 const cdp = await connect(Number(process.argv[2] ?? 9222))
 const js = <T = unknown>(expr: string) => cdp.evaluate<T>(expr)
@@ -73,10 +73,11 @@ try {
   await until('tree loaded', `document.querySelectorAll('[role=treeitem]').length > 0`)
 
   // 1. Chat-first layout: the chat is the main area; no editor panel until a file opens.
+  // (Run with the "Agent" layout preset active.)
   const layout = await js<{ chat: number; editor: boolean; tree: boolean }>(`({
-    chat: document.querySelector('.chat-area').getBoundingClientRect().width,
-    editor: !!document.querySelector('[data-testid=editor-panel]'),
-    tree: !!document.querySelector('[role=treeitem]'),
+    chat: document.querySelector('[data-panel=chat]').getBoundingClientRect().width,
+    editor: ${store('layout')}.visible.editor,
+    tree: !!document.querySelector('[data-panel=files] [role=treeitem]'),
   })`)
   if (layout.editor || !layout.tree || layout.chat < 400) throw new Error('unexpected layout: ' + JSON.stringify(layout))
   pass(`chat-first layout: chat ${Math.round(layout.chat)}px wide, editor closed, file tree shown`)
@@ -171,6 +172,9 @@ try {
   const cost = await js<number>(`${chat}.messages.reduce((s, m) => s + (m.done?.costUsd ?? 0), 0)`)
   console.log(`\n${results.length} checks passed. Estimated cost: $${cost.toFixed(2)}`)
 } finally {
+  // Leave no trace in Tinkr: the check's chats, its folder (else it reopens on next launch).
+  await deleteTestChats(js, { folder: dir }).catch(() => {})
+  await js(`${store('editor')}.closeAll(); ${store('workspace')}.closeFolder()`).catch(() => {})
   cdp.close()
   try {
     rmSync(dir, { recursive: true, force: true })

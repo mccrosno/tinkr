@@ -6,7 +6,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connect, sleep } from './cdp'
+import { connect, deleteTestChats, sleep } from './cdp'
 
 const cdp = await connect(Number(process.argv[2] ?? 9222))
 const js = <T = unknown>(expr: string) => cdp.evaluate<T>(expr)
@@ -105,6 +105,7 @@ try {
 
   console.log('\n' + results.join('\n'))
 } finally {
+  await deleteTestChats(js, { folder: dir }).catch(() => {})
   await js(`${store('editor')}.closeAll(); ${store('workspace')}.closeFolder()`).catch(() => {})
   cdp.close()
   // Best effort: on Windows, Search/Defender can keep new files locked for a while after

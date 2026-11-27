@@ -36,7 +36,9 @@ const PLUGIN = 'e2e-theme'
 const dir = join(homedir(), '.config', 'tinkr', 'plugins', PLUGIN)
 const THEME = `${PLUGIN}.harbor`
 
-// The user's own settings, to put back.
+// The user's own settings, to put back. Wait until they're read: another check may have
+// just reloaded the page, and "nothing yet" put back later would wipe them.
+await until('settings loaded', `window.__tinkr?.pinia._s.get('appearance') !== undefined && ${settings}.loaded === true`, 30_000)
 const saved = await js<Record<string, unknown>>(`JSON.parse(JSON.stringify(${settings}.data.app ?? {}))`)
 
 try {

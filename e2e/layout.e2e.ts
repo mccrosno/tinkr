@@ -53,6 +53,8 @@ const saved = await js<Record<string, string>>(
 
 const settings = store('settings')
 const rail = store('rail')
+// Wait until settings are read, or "nothing yet" would be put back over them at the end.
+await until('settings loaded', `window.__tinkr?.pinia._s.get('settings')?.loaded === true`, 30_000)
 const savedRail = await js<string>(`JSON.stringify([${settings}.appValue('rail.pins', null), ${settings}.appValue('rail.collapsed', null)])`)
 /** Choose an item from the ⋯ menu of the card a panel is on. */
 async function panelMenu(panel: string, item: string) {

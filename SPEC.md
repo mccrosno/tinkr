@@ -123,6 +123,10 @@ export function activate(api: TinkrApi) {
 ### Claude-authored plugins
 The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.ts` (typed API), and a skill describing the contribution types. A `reload_plugin` tool / error feedback loop lets Claude iterate on its own plugins.
 
+- Every chat can write plugins, with or without a project folder: Claude is told where the plugins folder is, may read it, and gets the skill.
+- Claude's edits there are reviewed as diffs like any other, **and asked about first**: plugin code runs as soon as it's saved, before the diff is reviewed, so an unasked edit to a running plugin would get around the permission cards. "Allow for this chat" covers one plugin. This holds even when the project contains the plugins folder, or the user's Claude Code settings allow every edit. Claude can't edit Tinkr's `settings.json`, which records the approvals. (Decided 2026-11-27.)
+- A new plugin still needs the user's OK in the approval dialog before it runs; the tools don't get around that, or turn on a plugin the user turned off.
+
 ### Distribution
 - v1: local folder, and git URL (clone, pin commit/tag, update button).
 - Later: static `registry.json` in a GitHub repo, shown as a "Browse plugins" tab that reuses git install. No server.
@@ -144,7 +148,7 @@ The plugins folder ships with: `CLAUDE.md` (how to write plugins), `tinkr-api.d.
 7. Plugin loader, slots, hot reload (move built-ins onto the plugin API). **Done** (see "Milestone 7 notes" below).
 8. Themes and backgrounds. **Done** (see "Milestone 8 notes" below).
 9. Interface refresh: combined title bar, floating panel cards, a collapsible pinned-panel rail (see "Interface"). **Built** (see "Milestone 9 notes" below); the title bar's window behaviour still needs checking by hand.
-10. In-app plugin authoring by Claude.
+10. In-app plugin authoring by Claude. **Built** (see "Milestone 10 notes" below); the live checks are only partly done.
 11. Git install for plugins.
 
 Order changed after Milestone 3 (author's decision, 2026-11-25): Tinkr is meant to replace Claude Desktop first, so file editing with review and the Desktop chat features come before docking and plugins. Built-ins written before Milestone 7 move onto the plugin API then.
@@ -265,6 +269,18 @@ What shipped, and decisions made along the way:
 - **Tests:** unit tests for the terminal store (spawn, I/O, resize, numbered titles, clean and failing exits, closing tabs and the closing-while-starting race, spawn failure) and the theme mapping, using a fake `PtyHost`. `e2e/terminal.e2e.ts` drives the real window: Ctrl+` opens a focused shell in the project folder, commands print, ANSI colors render, panel resize reaches the shell, Ctrl+C interrupts, hide/show keeps output, tabs have separate shells and closing one kills only it, `exit 3` keeps the tab, `exit` closes it, and closing all kills every shell (checked by process id).
 - **Linux:** `cargo clippy --all-targets -D warnings` is clean in WSL Ubuntu 24.04, so the non-Windows shell code compiles, but terminals haven't been run there yet: the e2e drives the window over CDP, which WebKitGTK doesn't offer. macOS is untested.
 
+## Milestone 10 notes
+Claude writes plugins. Checked without sending a prompt (SDK 0.3.331, CLI 2.1.332): a skill in `<folder>/.claude/skills` is offered when the folder is passed as `additionalDirectories`, and not otherwise; an in-process MCP server's tools connect.
+
+- **Authoring kit** (`src/plugins/authoring/`): at startup the webview writes `CLAUDE.md` (source: `guide.md`), `.claude/skills/tinkr-plugin/SKILL.md`, `tinkr-api.d.ts` and `tinkr-tokens.css` into the plugins folder. The last two are `api.ts` and `tokens.css` themselves (`?raw` imports), so they can't drift. Only changed files are written, and a file without the "Written by Tinkr" marker is the user's and left alone. New capability: `fs:allow-mkdir`; Rust also puts `plugins/.claude` in the fs scope by name, because on Linux and macOS the scope's wildcards skip dot folders.
+- **Turns** (protocol v4): `send` carries `pluginsDir`. With it the sidecar sets `additionalDirectories`, adds a paragraph to the system prompt, and offers two tools from an in-process MCP server named `tinkr` (`sidecar/src/pluginTools.ts`, needs `zod`): `reload_plugin` and `plugin_status`. The plugin's `CLAUDE.md` isn't loaded into every chat; the prompt tells Claude to read it when the task is about Tinkr.
+- **Tools:** plugins run in the webview, so a tool call becomes a `pluginRequest` event, answered with `pluginResponse`. `src/plugins/report.ts` reloads (or not) and describes the plugin: state, error, what it registered, and what it logged during that load. It waits 500 ms for late errors. No time limit, since a new plugin waits for the approval dialog; stopping the turn answers the call.
+- **Errors after loading:** `src/plugins/uncaught.ts` logs uncaught errors and rejected promises under the plugin whose file is in the stack, so they reach the Console and `plugin_status`.
+- **Permissions** (`decide` in `sidecar/src/tools.ts`): edits in the plugins folder are asked about (the card names the plugin); `settings.json` is refused. Tinkr remembers "allow for this chat" itself, per session and plugin, instead of passing on Claude Code's suggestion (which could switch to accepting every edit). The `PreToolUse` hook answers "ask" for anything in `~/.config/tinkr`, so allow rules and accept-edits mode don't skip the check. Shell commands that write there are asked about like any command, but aren't reviewed.
+- **Review:** plugin files are listed as `plugins/<name>/...`, and changes in the plugins folder now reach open editor tabs and the review store. Rejecting a new plugin's files unloads it (the loader now forgets a plugin whose `plugin.json` is gone). Its empty folder stays. As before, switching folders ends the review (changes stay on disk).
+- **UI:** "New plugin with Claude" in the Plugins panel and the command palette starts the request in the message box.
+- **Tests:** unit tests for the policy and a turn's options, grants and hook; the report, uncaught errors, the kit (writing it, `api.ts` staying declaration-only, the guide's example loading) and the chat store's side. `sidecar/scripts/plugin-smoke.ts` passed on Windows (2026-11-27): Claude wrote a plugin, was asked once, called `reload_plugin`, and could not write `settings.json`. A separate control showed the hook is what stops an unasked plugin edit in accept-edits mode. **Still open:** the smoke check's project allow rule never takes effect (it asks even without the hook), so that step proves nothing and should switch to accept-edits mode; whether the hook still asks under an allow rule that does apply (`allowedTools`) is unverified, though without the hook such a rule lets the edit through; and `e2e/authoring.e2e.ts` (the whole loop in the window) has **not been run**. Linux and macOS are untested.
+
 ## Milestone 9 notes
 The interface refresh. Notes for earlier milestones describe the interface as it was then (titlebar buttons, status bar, fixed columns).
 
@@ -338,7 +354,7 @@ Where other tools' sessions live (checked on the author's machine):
 - Desktop's regular chats are on claude.ai, not on disk. Reading them would need a claude.ai login, which this spec rules out.
 
 How it works:
-- **Chats without a folder** run in the home folder (author's decision, 2026-11-25), like the CLI started there: `claude --resume` from home lists them, and Tinkr's no-folder list shows the CLI's and Desktop's home-folder sessions. (Briefly a Tinkr-only folder was used; it kept them apart from other tools, which turned out to be the opposite of what's wanted.) They still get no edit tools.
+- **Chats without a folder** run in the home folder (author's decision, 2026-11-25), like the CLI started there: `claude --resume` from home lists them, and Tinkr's no-folder list shows the CLI's and Desktop's home-folder sessions. (Briefly a Tinkr-only folder was used; it kept them apart from other tools, which turned out to be the opposite of what's wanted.) They still get no edit tools. (Since Milestone 10 they can edit the plugins folder, and nothing else.)
 - **Protocol v3:** `send` gains `model`, `effort` and `attachments` (name, media type, base64). `status` carries `models`. History requests `listChats` (per folder or `allFolders`), `loadChat`, `renameChat`, `deleteChat` carry a `requestId`; the sidecar answers with `chatList`, `chatHistory` or `requestDone` (with `error` on failure). The provider matches answers to requests and rejects waiting ones if the sidecar exits or restarts. `AgentProvider` gained `listChats`, `loadChat`, `renameChat`, `deleteChat`.
 - **Turns** always send the message as a one-item stream (the form that takes content blocks), kept open until the turn ends so permission answers still reach the CLI. The review e2e (permission card, Allow) passes this way; Stop still ends a turn within ~20 ms.
 - **History (sidecar `history.ts`):** turns a transcript into rows (user text with attachments, Claude's text with consecutive blocks joined, tool calls with their error state). Sub-agent work, thinking and Claude Code's bookkeeping messages (slash-command echoes, "[Request interrupted by user]") are left out. In the webview, `parsePrompt` turns `<selection>` blocks back into chips.

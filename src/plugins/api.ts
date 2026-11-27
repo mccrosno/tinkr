@@ -1,6 +1,7 @@
 // The plugin API: what a plugin's `activate(api)` receives. This file is the public
-// contract. It has no imports, so it can be shipped to plugin authors as-is
-// (tinkr-api.d.ts). Tinkr's built-in panels use the same API.
+// contract. It has no imports and declares only types, so it ships to plugin authors
+// as-is: Tinkr writes it into the plugins folder as tinkr-api.d.ts. Tinkr's built-in
+// panels use the same API.
 //
 // A plugin is a folder in ~/.config/tinkr/plugins/<name>/ with a plugin.json and an
 // ES module:
@@ -178,7 +179,7 @@ export interface ThemeDefinition {
   /**
    * Design tokens to change: CSS colors (or other values) by name, e.g.
    * { "accent": "#4f8cff", "bg": "#101418" }. Names may include the "--tk-" prefix.
-   * The full list is Tinkr's src/styles/tokens.css.
+   * The full list is tinkr-tokens.css in the plugins folder (Tinkr's src/styles/tokens.css).
    */
   tokens?: Record<string, string>
   background?: ThemeBackground

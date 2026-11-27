@@ -31,6 +31,7 @@ export function toAgentEvent(e: SidecarEvent): AgentEvent | null {
     case 'fileChanged':
     case 'permissionRequest':
     case 'permissionCancelled':
+    case 'pluginRequest':
       return e
     case 'error':
       return { type: 'log', message: `sidecar error: ${e.message}` }
@@ -95,8 +96,8 @@ export class ClaudeSidecarProvider implements AgentProvider {
 
   async send(sessionId: string | null, text: string, options: SendOptions = {}) {
     const turnId = `t${Date.now().toString(36)}-${this.nextTurn++}`
-    const { cwd, model, effort, attachments } = options
-    await this.request({ type: 'send', turnId, resumeSessionId: sessionId, text, cwd, model, effort, attachments })
+    const { cwd, model, effort, attachments, pluginsDir } = options
+    await this.request({ type: 'send', turnId, resumeSessionId: sessionId, text, cwd, model, effort, attachments, pluginsDir })
     return turnId
   }
 
@@ -151,6 +152,10 @@ export class ClaudeSidecarProvider implements AgentProvider {
 
   respondToPermission(requestId: string, decision: PermissionDecision) {
     return this.request({ type: 'permissionResponse', requestId, decision })
+  }
+
+  respondToPluginRequest(requestId: string, { text, isError }: { text: string; isError: boolean }) {
+    return this.request({ type: 'pluginResponse', requestId, text, isError })
   }
 
   async restart() {

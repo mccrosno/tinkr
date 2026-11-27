@@ -2,8 +2,9 @@
 //! folder, and serving plugin modules to the webview.
 //!
 //! Plugins live in `~/.config/tinkr/plugins/<name>/`. The webview reads their
-//! `plugin.json` and watches the folder through the fs plugin, so `setup` adds
-//! `~/.config/tinkr` (plugins plus Tinkr's `settings.json`) to the fs scope.
+//! `plugin.json`, watches the folder and writes the plugin authoring files into it
+//! through the fs plugin, so `setup` adds `~/.config/tinkr` (plugins plus Tinkr's
+//! `settings.json`) to the fs scope.
 //!
 //! A plugin's code is an ES module, which the webview loads with `import(url)`. It
 //! can't import from disk directly, so this module serves the files over a custom URI
@@ -40,9 +41,16 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let plugins = plugins_dir(app)?;
     fs::create_dir_all(&plugins).map_err(|e| format!("couldn't create {}: {e}", plugins.display()))?;
     let dir = tinkr_dir(app)?;
-    app.fs_scope()
-        .allow_directory(&dir, true)
-        .map_err(|e| format!("couldn't allow access to {}: {e}", dir.display()))
+    // One closure for both calls. `Fn(&PathBuf) -> ...` borrows the path, so the caller keeps it.
+    let allow = |path: &PathBuf| {
+        app.fs_scope()
+            .allow_directory(path, true)
+            .map_err(|e| format!("couldn't allow access to {}: {e}", path.display()))
+    };
+    allow(&dir)?;
+    // The webview writes a Claude Code skill into `plugins/.claude`. On Linux and macOS
+    // the scope's wildcards skip names that start with a dot, so name this folder.
+    allow(&plugins.join(".claude"))
 }
 
 /// JS: `invoke('plugins_dir')`. Where plugins are installed.

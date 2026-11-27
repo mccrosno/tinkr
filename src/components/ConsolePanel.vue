@@ -2,7 +2,7 @@
 // The Console panel: what plugins log, and their errors (failed loads, exceptions in
 // commands or panels). An error from a plugin on disk can be handed to Claude.
 import { computed, nextTick, ref, watch } from 'vue'
-import { askClaudeToFix } from '../plugins/fixRequest'
+import { askClaudeToFix } from '../plugins/chatRequests'
 import { usePlugins, type LogEntry } from '../stores/plugins'
 
 const plugins = usePlugins()

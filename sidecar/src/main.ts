@@ -42,11 +42,14 @@ async function handle(line: string) {
         model: req.model,
         effort: req.effort,
         attachments: req.attachments,
+        pluginsDir: req.pluginsDir,
       })
     case 'abort':
       return agent.abort(req.turnId)
     case 'permissionResponse':
       return agent.respond(req.requestId, req.decision)
+    case 'pluginResponse':
+      return agent.answerPluginRequest(req.requestId, { text: req.text, isError: req.isError })
     case 'listChats':
       return answer(req.requestId, async () => {
         const dir = req.allFolders ? null : chatFolder(req.cwd)

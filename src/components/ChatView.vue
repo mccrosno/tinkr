@@ -166,7 +166,8 @@ const formatMeta = (d: NonNullable<(typeof chat.messages)[number]['done']>) =>
           </template>
           <div v-else-if="m.role === 'tool' && m.tool" class="tool" :class="m.tool.status" :data-tool="m.tool.name">
             <span class="status" aria-hidden="true" />
-            <span class="name">{{ m.tool.name }}</span>
+            <!-- Tinkr's own tools without the "mcp__tinkr__" Claude Code puts on them. -->
+            <span class="name">{{ m.tool.name.replace(/^mcp__tinkr__/, '') }}</span>
             <button v-if="toolFile(m)" class="summary link" :title="toolFile(m)!" @click="editor.open(toolFile(m)!)">{{ m.tool.summary }}</button>
             <span v-else class="summary">{{ m.tool.summary }}</span>
           </div>

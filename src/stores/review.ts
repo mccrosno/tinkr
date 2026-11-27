@@ -11,13 +11,14 @@ import { computed, ref } from 'vue'
 import { Text } from '@codemirror/state'
 import { Chunk } from '@codemirror/merge'
 import type { FileEvent } from './chat'
+import { usePlugins } from './plugins'
 import { useWorkspace } from './workspace'
 import { relativeTo, samePath } from '../workspace/fs'
 
 export interface ReviewFile {
   /** Absolute path. */
   path: string
-  /** Path relative to the project, for display. */
+  /** For display: relative to the project, or "plugins/..." in Tinkr's plugins folder. */
   relPath: string
   /** The text before Claude's edits; null if Claude created the file. */
   baseline: string | null
@@ -69,6 +70,14 @@ export const useReview = defineStore('review', () => {
     }
   }
 
+  /** A short name for a file: where it is in the project or the plugins folder. */
+  function displayPath(path: string) {
+    const inProject = relativeTo(useWorkspace().root, path)
+    if (inProject !== path) return inProject
+    const inPlugins = relativeTo(usePlugins().dir, path)
+    return inPlugins !== path ? `plugins/${inPlugins}` : path
+  }
+
   /** Add, update or drop a file's entry for its current text. */
   function update(path: string, baseline: string | null, current: string | null) {
     const existing = find(path)
@@ -78,7 +87,7 @@ export const useReview = defineStore('review', () => {
     }
     const stats = lineStats(baseline, current)
     if (existing) Object.assign(existing, { baseline, current, ...stats })
-    else files.value.push({ path, relPath: relativeTo(useWorkspace().root, path), baseline, current, ...stats })
+    else files.value.push({ path, relPath: displayPath(path), baseline, current, ...stats })
     return true
   }
 

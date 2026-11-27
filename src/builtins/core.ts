@@ -6,7 +6,8 @@ import { computed, watch } from 'vue'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { ui } from '../app/ui'
 import { closeFolder, openChatIn, openFolder } from '../app/workspace'
-import { pluginLoader, pluginsDir } from '../plugins/boot'
+import { pluginLoader } from '../plugins/boot'
+import { askClaudeToCreate } from '../plugins/chatRequests'
 import type { TinkrApi } from '../plugins/api'
 import type { BuiltInPlugin } from '../plugins/loader'
 import { useChat } from '../stores/chat'
@@ -171,6 +172,7 @@ function activate(api: TinkrApi) {
   ] as const) {
     command({ id: `view.${id}`, title: `View: ${title}`, run: () => layout.show(id) })
   }
+  command({ id: 'plugins.create', title: 'Plugins: create a plugin with Claude', run: () => askClaudeToCreate() })
   command({
     id: 'plugins.reloadAll',
     title: 'Plugins: reload all',
@@ -183,8 +185,7 @@ function activate(api: TinkrApi) {
     id: 'plugins.openFolder',
     title: 'Plugins: open the plugins folder',
     run: async () => {
-      const dir = pluginsDir()
-      if (dir) await revealItemInDir(dir)
+      if (plugins.dir) await revealItemInDir(plugins.dir)
     },
   })
 }
